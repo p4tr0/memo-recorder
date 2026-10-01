@@ -1,28 +1,47 @@
 package com.ingeniumtc.voicememo.ui.home
 
+import android.animation.ValueAnimator
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,69 +49,278 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.ingeniumtc.voicememo.R
 import com.ingeniumtc.voicememo.data.Recording
 import com.ingeniumtc.voicememo.data.Tag
 import com.ingeniumtc.voicememo.data.TagNames
+import kotlinx.coroutines.flow.first
 
-/** "All", then each tag, then "Add tag". Selecting a chip filters the list. */
+/**
+ * "All", then each tag, then "Add tag". Selecting a chip filters the list; long-pressing a tag offers Rename and
+ * Delete.
+ */
 @Composable
 internal fun TagBar(
     tags: List<Tag>,
     selectedTag: Tag?,
     onTagSelected: (Tag?) -> Unit,
     onAddTag: (String) -> TagNames.Result?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRenameTag: (Tag, String) -> TagNames.Result? = { _, _ -> null },
+    onDeleteTag: (Tag) -> Unit = {}
 ) {
     var adding by rememberSaveable { mutableStateOf(false) }
+    // Ids, not tags, so a tag that disappears (deleted elsewhere) closes its menu or dialog.
+    var menuFor by rememberSaveable { mutableStateOf<Long?>(null) }
+    var renaming by rememberSaveable { mutableStateOf<Long?>(null) }
+    var deleting by rememberSaveable { mutableStateOf<Long?>(null) }
+    val haptics = LocalHapticFeedback.current
+    val rowState = rememberLazyListState()
+    // A lone selected "All" filters nothing, so until there's a tag the bar only offers to add one.
+    val showAll = tags.isNotEmpty()
+    val selectedIndex = selectedTag?.let { tag -> tags.indexOfFirst { it.id == tag.id } + 1 } ?: 0
+    // Keeps the selected chip in view, e.g. a remembered tag far along the row on launch.
+    val reducedMotion = remember { !ValueAnimator.areAnimatorsEnabled() }
+    LaunchedEffect(selectedIndex) {
+        // Waits for the first layout; before it nothing counts as visible.
+        val info = snapshotFlow { rowState.layoutInfo }.first { it.totalItemsCount > 0 }
+        val item = info.visibleItemsInfo.firstOrNull { it.index == selectedIndex }
+        val fullyVisible = item != null &&
+            item.offset >= info.viewportStartOffset &&
+            item.offset + item.size <= info.viewportEndOffset - info.afterContentPadding
+        if (!fullyVisible && selectedIndex > 0) {
+            if (reducedMotion) rowState.scrollToItem(selectedIndex) else rowState.animateScrollToItem(selectedIndex)
+        }
+    }
+    val startFade by animateFloatAsState(
+        targetValue = if (rowState.canScrollBackward) 1f else 0f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "tagStartFade"
+    )
+    val endFade by animateFloatAsState(
+        targetValue = if (rowState.canScrollForward) 1f else 0f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "tagEndFade"
+    )
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     LazyRow(
-        modifier = modifier.fillMaxWidth(),
+        state = rowState,
+        modifier = modifier
+            .fillMaxWidth()
+            .selectableGroup()
+            .horizontalEdgeFade({ startFade }, { endFade }, rtl, MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        item(key = "all") {
-            FilterChip(
-                selected = selectedTag == null,
-                onClick = { onTagSelected(null) },
-                label = { Text(stringResource(R.string.tag_all)) }
-            )
+        if (showAll) {
+            item(key = "all") {
+                TagChip(
+                    label = stringResource(R.string.tag_all),
+                    selected = selectedTag == null,
+                    onClick = { onTagSelected(null) }
+                )
+            }
         }
         items(tags, key = { it.id }) { tag ->
-            FilterChip(
-                selected = tag.id == selectedTag?.id,
-                onClick = { onTagSelected(tag) },
-                label = { Text(tag.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            )
+            Box {
+                TagChip(
+                    label = tag.name,
+                    selected = tag.id == selectedTag?.id,
+                    onClick = { onTagSelected(tag) },
+                    onLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuFor = tag.id
+                    },
+                    onLongClickLabel = stringResource(R.string.action_tag_options, tag.name)
+                )
+                DropdownMenu(expanded = menuFor == tag.id, onDismissRequest = { menuFor = null }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.action_rename)) },
+                        onClick = {
+                            menuFor = null
+                            renaming = tag.id
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
+                        },
+                        onClick = {
+                            menuFor = null
+                            deleting = tag.id
+                        }
+                    )
+                }
+            }
         }
         item(key = "add") {
             AssistChip(
                 onClick = { adding = true },
                 label = { Text(stringResource(R.string.action_add_tag)) },
-                leadingIcon = { Icon(painterResource(R.drawable.ic_add), contentDescription = null) }
+                leadingIcon = {
+                    Icon(
+                        painterResource(R.drawable.ic_add),
+                        contentDescription = null,
+                        modifier = Modifier.size(AssistChipDefaults.IconSize)
+                    )
+                },
+                // Quieter than the filters: an action at the end of the row, not another accent.
+                colors = AssistChipDefaults.assistChipColors(
+                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    leadingIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             )
         }
     }
     if (adding) {
         TagNameDialog(
             title = stringResource(R.string.add_tag_title),
+            confirmLabel = stringResource(R.string.action_add),
             onDismiss = { adding = false },
             onConfirm = { name -> onAddTag(name).also { if (it == null) adding = false } }
         )
     }
+    tags.firstOrNull { it.id == renaming }?.let { tag ->
+        TagNameDialog(
+            title = stringResource(R.string.rename_tag_title),
+            confirmLabel = stringResource(R.string.action_save),
+            initial = tag.name,
+            onDismiss = { renaming = null },
+            onConfirm = { name -> onRenameTag(tag, name).also { if (it == null) renaming = null } }
+        )
+    }
+    tags.firstOrNull { it.id == deleting }?.let { tag ->
+        DeleteTagDialog(
+            name = tag.name,
+            onDismiss = { deleting = null },
+            onConfirm = {
+                deleting = null
+                onDeleteTag(tag)
+            }
+        )
+    }
 }
+
+/**
+ * A filter chip that can also be long-pressed, which Material's FilterChip can't. Selected is inverted rather
+ * than tinted: clearly the active filter in both themes, and neutral, so it never competes with the red record
+ * button or the coral of the playing row.
+ */
+@Composable
+private fun TagChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null
+) {
+    val colors = MaterialTheme.colorScheme
+    val spec = spring<Color>(stiffness = Spring.StiffnessMediumLow)
+    val container by animateColorAsState(
+        if (selected) colors.inverseSurface else colors.inverseSurface.copy(alpha = 0f),
+        spec,
+        label = "chipContainer"
+    )
+    val content by animateColorAsState(
+        if (selected) colors.inverseOnSurface else colors.onSurfaceVariant,
+        spec,
+        label = "chipContent"
+    )
+    val border by animateColorAsState(
+        if (selected) colors.inverseSurface else colors.outlineVariant,
+        spec,
+        label = "chipBorder"
+    )
+    Box(
+        modifier
+            .minimumInteractiveComponentSize()
+            .heightIn(min = CHIP_HEIGHT)
+            .clip(CHIP_SHAPE)
+            .drawBehind { drawRect(container) }
+            .border(1.dp, border, CHIP_SHAPE)
+            .combinedClickable(
+                role = Role.RadioButton,
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onLongClickLabel = onLongClickLabel
+            )
+            .semantics { this.selected = selected }
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            color = content,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            // A 30-character name stays a chip, not most of the row.
+            modifier = Modifier.widthIn(max = TAG_CHIP_MAX_WIDTH)
+        )
+    }
+}
+
+/**
+ * Fades whichever edge has more chips beyond it, like the list's bottom edge, so the row reads as scrollable
+ * instead of cut off.
+ */
+private fun Modifier.horizontalEdgeFade(start: () -> Float, end: () -> Float, rtl: Boolean, color: Color) =
+    drawWithContent {
+        drawContent()
+        val width = TAG_EDGE_FADE.toPx().coerceAtMost(size.width / 2)
+        val (left, right) = if (rtl) end() to start() else start() to end()
+        if (left > 0f) {
+            drawRect(
+                brush = Brush.horizontalGradient(listOf(color, color.copy(alpha = 0f)), startX = 0f, endX = width),
+                size = Size(width, size.height),
+                alpha = left
+            )
+        }
+        if (right > 0f) {
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    listOf(color.copy(alpha = 0f), color),
+                    startX = size.width - width,
+                    endX = size.width
+                ),
+                topLeft = Offset(size.width - width, 0f),
+                size = Size(width, size.height),
+                alpha = right
+            )
+        }
+    }
 
 /** Shown when the selected tag has no recordings, while other recordings exist. */
 @Composable
@@ -144,13 +372,14 @@ internal fun RecordingTagsDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
+                    // Five and a half rows, so a cut-off row shows there are more to scroll to.
                     LazyColumn(Modifier.heightIn(max = TAG_LIST_MAX_HEIGHT)) {
                         items(tags, key = { it.id }) { tag ->
                             val checked = tag.id in recording.tagIds
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .heightIn(min = 48.dp)
+                                    .heightIn(min = TAG_ROW_HEIGHT)
                                     .toggleable(
                                         value = checked,
                                         role = Role.Checkbox,
@@ -160,10 +389,13 @@ internal fun RecordingTagsDialog(
                             ) {
                                 // The row is the toggle, so the checkbox itself takes no clicks or focus.
                                 Checkbox(checked = checked, onCheckedChange = null)
+                                // Options to pick, so full-strength text rather than the dialog's dimmer body color.
                                 Text(
                                     tag.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.padding(start = 16.dp),
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
@@ -198,13 +430,22 @@ internal fun RecordingTagsDialog(
     )
 }
 
+/** Add or rename. [initial] is selected in full, so typing replaces it. */
 @Composable
-private fun TagNameDialog(title: String, onDismiss: () -> Unit, onConfirm: (String) -> TagNames.Result?) {
-    var name by rememberSaveable { mutableStateOf("") }
+private fun TagNameDialog(
+    title: String,
+    confirmLabel: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> TagNames.Result?,
+    initial: String = ""
+) {
+    var name by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(initial, selection = TextRange(0, initial.length)))
+    }
     var error by remember { mutableStateOf<TagNames.Result?>(null) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
-    val submit = { error = onConfirm(name) }
+    val submit = { error = onConfirm(name.text) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -212,8 +453,8 @@ private fun TagNameDialog(title: String, onDismiss: () -> Unit, onConfirm: (Stri
             OutlinedTextField(
                 value = name,
                 onValueChange = {
+                    if (it.text != name.text) error = null
                     name = it
-                    error = null
                 },
                 label = { Text(stringResource(R.string.tag_name_label)) },
                 singleLine = true,
@@ -228,8 +469,28 @@ private fun TagNameDialog(title: String, onDismiss: () -> Unit, onConfirm: (Stri
             )
         },
         confirmButton = {
-            TextButton(onClick = { submit() }, enabled = name.isNotBlank()) {
-                Text(stringResource(R.string.action_add))
+            TextButton(onClick = { submit() }, enabled = name.text.isNotBlank()) { Text(confirmLabel) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } }
+    )
+}
+
+@Composable
+private fun DeleteTagDialog(name: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.delete_tag_title, name)) },
+        text = { Text(stringResource(R.string.delete_tag_body)) },
+        confirmButton = {
+            // Filled and error-colored like deleting a recording, so it outweighs Cancel.
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                )
+            ) {
+                Text(stringResource(R.string.action_delete))
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } }
@@ -241,7 +502,14 @@ private fun tagNameError(result: TagNames.Result): String = when (result) {
     TagNames.Result.TooLong ->
         pluralStringResource(R.plurals.tag_error_too_long, TagNames.MAX_LENGTH, TagNames.MAX_LENGTH)
 
-    else -> stringResource(R.string.tag_error_blank)
+    TagNames.Result.Taken -> stringResource(R.string.tag_error_taken)
+
+    is TagNames.Result.Blank, is TagNames.Result.Valid -> stringResource(R.string.tag_error_blank)
 }
 
-private val TAG_LIST_MAX_HEIGHT = 240.dp
+private val CHIP_HEIGHT = 32.dp
+private val CHIP_SHAPE = RoundedCornerShape(8.dp)
+private val TAG_ROW_HEIGHT = 48.dp
+private val TAG_LIST_MAX_HEIGHT = TAG_ROW_HEIGHT * 5.5f
+private val TAG_CHIP_MAX_WIDTH = 200.dp
+private val TAG_EDGE_FADE = 24.dp

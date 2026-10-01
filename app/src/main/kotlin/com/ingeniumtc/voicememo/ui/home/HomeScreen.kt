@@ -114,6 +114,9 @@ fun HomeScreen(
     onAddTag: (String) -> TagNames.Result? = { null },
     onSetTagged: (Recording, Tag, Boolean) -> Unit = { _, _, _ -> },
     onAddTagTo: (Recording, String) -> TagNames.Result? = { _, _ -> null },
+    /** Returns the error to show in the rename dialog, or null once the rename is submitted. */
+    onRenameTag: (Tag, String) -> TagNames.Result? = { _, _ -> null },
+    onDeleteTag: (Tag) -> Unit = {},
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     clock: () -> Long = SystemClock::elapsedRealtime,
     zone: ZoneId = ZoneId.systemDefault()
@@ -156,6 +159,8 @@ fun HomeScreen(
                             selectedTag = selectedTag,
                             onTagSelected = onTagSelected,
                             onAddTag = onAddTag,
+                            onRenameTag = onRenameTag,
+                            onDeleteTag = onDeleteTag,
                             modifier = Modifier.padding(vertical = 4.dp)
                         )
                         val shown = recordings.orEmpty()

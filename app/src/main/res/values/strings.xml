@@ -85,4 +85,11 @@
         <item quantity="one">Use %1$d character or fewer</item>
         <item quantity="other">Use %1$d characters or fewer</item>
     </plurals>
+    <string name="tag_error_taken">A tag with this name already exists</string>
+    <!-- TalkBack's long-press action on a tag chip, e.g. "Rename or delete Work". -->
+    <string name="action_tag_options">Rename or delete %1$s</string>
+    <string name="rename_tag_title">Rename tag</string>
+    <string name="delete_tag_title">Delete tag \u201c%1$s\u201d?</string>
+    <string name="delete_tag_body">Recordings keep their audio and stay in All; they just lose this tag.</string>
+    <string name="message_rename_tag_taken">Couldn\'t rename: a tag with that name was just added</string>
 </resources>

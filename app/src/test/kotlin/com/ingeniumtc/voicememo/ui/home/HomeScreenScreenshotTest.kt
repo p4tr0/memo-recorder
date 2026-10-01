@@ -6,16 +6,23 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getAllSemanticsNodes
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
@@ -24,6 +31,8 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.ingeniumtc.voicememo.R
 import com.ingeniumtc.voicememo.data.Recording
+import com.ingeniumtc.voicememo.data.Tag
+import com.ingeniumtc.voicememo.data.TagNames
 import com.ingeniumtc.voicememo.playback.PlaybackState
 import com.ingeniumtc.voicememo.recording.RecordingState
 import com.ingeniumtc.voicememo.ui.theme.VoiceMemoTheme
@@ -222,6 +231,176 @@ class HomeScreenScreenshotTest {
         open = UNPROCESSED_MENU + "Delete"
     )
 
+    @Test
+    fun tagsAllLight() = captureTags("home_tags_all_light", darkTheme = false)
+
+    @Test
+    fun tagsAllDark() = captureTags("home_tags_all_dark", darkTheme = true)
+
+    @Test
+    fun tagsFilteredLight() = captureTags("home_tags_filtered_light", darkTheme = false, selectedTag = WORK)
+
+    @Test
+    fun tagsFilteredDark() = captureTags("home_tags_filtered_dark", darkTheme = true, selectedTag = WORK)
+
+    @Test
+    fun tagsNoneTaggedLight() = captureTags("home_tags_none_tagged_light", darkTheme = false, selectedTag = UNUSED)
+
+    @Test
+    fun tagsNoneTaggedDark() = captureTags("home_tags_none_tagged_dark", darkTheme = true, selectedTag = UNUSED)
+
+    @Test
+    fun tagsManyLight() = captureTags("home_tags_many_light", darkTheme = false, tags = MANY_TAGS, selectedTag = WORK)
+
+    @Test
+    fun tagsManyDark() = captureTags("home_tags_many_dark", darkTheme = true, tags = MANY_TAGS, selectedTag = WORK)
+
+    @Test
+    fun addTagDialogLight() = captureTags("home_add_tag_dialog_light", darkTheme = false, open = ADD_TAG)
+
+    @Test
+    fun addTagDialogDark() = captureTags("home_add_tag_dialog_dark", darkTheme = true, open = ADD_TAG)
+
+    @Test
+    fun addTagDialogErrorLight() = captureTags(
+        "home_add_tag_dialog_error_light",
+        darkTheme = false,
+        open = ADD_TAG,
+        type = TOO_LONG_NAME,
+        thenClick = "Add"
+    )
+
+    @Test
+    fun addTagDialogErrorDark() = captureTags(
+        "home_add_tag_dialog_error_dark",
+        darkTheme = true,
+        open = ADD_TAG,
+        type = TOO_LONG_NAME,
+        thenClick = "Add"
+    )
+
+    @Test
+    fun recordingTagsDialogLight() =
+        captureTags("home_recording_tags_dialog_light", darkTheme = false, open = MENU + "Tags")
+
+    @Test
+    fun recordingTagsDialogDark() =
+        captureTags("home_recording_tags_dialog_dark", darkTheme = true, open = MENU + "Tags")
+
+    @Test
+    fun recordingTagsDialogManyLight() = captureTags(
+        "home_recording_tags_dialog_many_light",
+        darkTheme = false,
+        tags = MANY_TAGS,
+        open = MENU + "Tags"
+    )
+
+    @Test
+    fun recordingTagsDialogNoTagsLight() = captureTags(
+        "home_recording_tags_dialog_no_tags_light",
+        darkTheme = false,
+        tags = emptyList(),
+        open =
+            MENU + "Tags"
+    )
+
+    @Test
+    fun recordingTagsDialogNoTagsDark() = captureTags(
+        "home_recording_tags_dialog_no_tags_dark",
+        darkTheme = true,
+        tags = emptyList(),
+        open =
+            MENU + "Tags"
+    )
+
+    @Test
+    @Config(qualifiers = "+land")
+    fun tagsLandscapeLight() =
+        captureTags("home_tags_landscape_light", darkTheme = false, tags = MANY_TAGS, playback = PLAYING)
+
+    @Test
+    @Config(qualifiers = "+land")
+    fun tagsLandscapeDark() =
+        captureTags("home_tags_landscape_dark", darkTheme = true, tags = MANY_TAGS, playback = PLAYING)
+
+    @Test
+    fun tagsFontScale2xLight() =
+        captureTags("home_tags_font2x_light", darkTheme = false, selectedTag = WORK, playback = PLAYING, fontScale = 2f)
+
+    @Test
+    fun tagsFontScale2xDark() =
+        captureTags("home_tags_font2x_dark", darkTheme = true, selectedTag = WORK, playback = PLAYING, fontScale = 2f)
+
+    @Test
+    fun tagMenuLight() = captureTags("home_tag_menu_light", darkTheme = false, open = WORK_CHIP, longPress = true)
+
+    @Test
+    fun tagMenuDark() = captureTags("home_tag_menu_dark", darkTheme = true, open = WORK_CHIP, longPress = true)
+
+    @Test
+    fun renameTagDialogLight() =
+        captureTags("home_rename_tag_dialog_light", darkTheme = false, open = WORK_CHIP + "Rename", longPress = true)
+
+    @Test
+    fun renameTagDialogDark() =
+        captureTags("home_rename_tag_dialog_dark", darkTheme = true, open = WORK_CHIP + "Rename", longPress = true)
+
+    @Test
+    fun renameTagTakenLight() = captureTags(
+        "home_rename_tag_taken_light",
+        darkTheme = false,
+        open = WORK_CHIP + "Rename",
+        longPress = true,
+        type = "ideas",
+        thenClick = "Save"
+    )
+
+    @Test
+    fun renameTagTakenDark() = captureTags(
+        "home_rename_tag_taken_dark",
+        darkTheme = true,
+        open = WORK_CHIP + "Rename",
+        longPress = true,
+        type = "ideas",
+        thenClick = "Save"
+    )
+
+    @Test
+    fun deleteTagDialogLight() =
+        captureTags("home_delete_tag_dialog_light", darkTheme = false, open = WORK_CHIP + "Delete", longPress = true)
+
+    @Test
+    fun deleteTagDialogDark() =
+        captureTags("home_delete_tag_dialog_dark", darkTheme = true, open = WORK_CHIP + "Delete", longPress = true)
+
+    /** The library with [TAGS] on some recordings, filtered by [selectedTag] like the ViewModel does. */
+    private fun captureTags(
+        name: String,
+        darkTheme: Boolean,
+        tags: List<Tag> = TAGS,
+        selectedTag: Tag? = null,
+        playback: PlaybackState = PlaybackState(),
+        fontScale: Float = 1f,
+        open: List<String> = emptyList(),
+        type: String? = null,
+        thenClick: String? = null,
+        longPress: Boolean = false
+    ) = capture(
+        name,
+        darkTheme,
+        IDLE,
+        recordings = TAGGED_LIBRARY.filter { selectedTag == null || selectedTag.id in it.tagIds },
+        playback = playback,
+        fontScale = fontScale,
+        open = open,
+        allRecordings = TAGGED_LIBRARY,
+        tags = tags,
+        selectedTag = selectedTag,
+        type = type,
+        thenClick = thenClick,
+        longPress = longPress
+    )
+
     /**
      * [open] is a list of clicks performed before capturing: the first is a content description, the rest are
      * texts. With clicks, the whole screen is captured so popups (menus, dialogs) are included.
@@ -236,7 +415,16 @@ class HomeScreenScreenshotTest {
         amplitude: Float = 0f,
         fontScale: Float = 1f,
         snackbar: Boolean = false,
-        open: List<String> = emptyList()
+        open: List<String> = emptyList(),
+        allRecordings: List<Recording>? = recordings,
+        tags: List<Tag> = emptyList(),
+        selectedTag: Tag? = null,
+        /** Typed into the dialog's text field after [open]. */
+        type: String? = null,
+        /** Clicked by text after [type]. */
+        thenClick: String? = null,
+        /** The first of [open] is long-pressed by its text instead of clicked. */
+        longPress: Boolean = false
     ) {
         composeRule.setContent {
             val density = LocalDensity.current
@@ -259,6 +447,12 @@ class HomeScreenScreenshotTest {
                         recordings = recordings,
                         playback = playback,
                         playbackPositionMs = { PLAYING_POSITION_MS },
+                        allRecordings = allRecordings,
+                        tags = tags,
+                        selectedTag = selectedTag,
+                        onAddTag = ::rejectInvalid,
+                        onAddTagTo = { _, tag -> rejectInvalid(tag) },
+                        onRenameTag = { tag, input -> rejectRename(tags, tag, input) },
                         snackbarHostState = snackbarHostState,
                         clock = { 83_000 },
                         zone = ZoneOffset.UTC
@@ -271,13 +465,54 @@ class HomeScreenScreenshotTest {
             composeRule.onRoot().captureRoboImage(path)
             return
         }
-        composeRule.onNode(contentDescriptionIgnoringNarrowSpaces(open.first())).performClick()
-        composeRule.waitForIdle()
+        val first = composeRule.onAllNodes(contentDescriptionIgnoringNarrowSpaces(open.first()))
+        if (longPress) {
+            composeRule.onNodeWithText(open.first()).performSemanticsAction(SemanticsActions.OnLongClick)
+            composeRule.waitForIdle()
+        } else if (first.fetchSemanticsNodes().isNotEmpty()) {
+            first[0].performClick()
+            composeRule.waitForIdle()
+        } else {
+            // A chip at the end of the tag bar may be scrolled out of composition; the bar is the first scroller.
+            composeRule.onAllNodes(hasScrollToNodeAction())[0].performScrollToNode(hasText(open.first()))
+            // It opens a dialog with a focused field right away, so the clock is stepped by hand from here.
+            composeRule.mainClock.autoAdvance = false
+            composeRule.onNodeWithText(open.first()).performSemanticsAction(SemanticsActions.OnClick)
+        }
         // A focused text field's cursor blinks forever, so from here frames are stepped by hand instead of waiting
         // for idle, draining the looper each frame so new popup and dialog windows get attached and drawn.
         composeRule.mainClock.autoAdvance = false
         // Touches injected into popup windows miss under Robolectric, so menu items are clicked semantically.
         open.drop(1).forEach { composeRule.onNodeWithText(it).performSemanticsAction(SemanticsActions.OnClick) }
+        // Records the dialog's root as its window is created. Chained after the rule's own callback and restored
+        // before the rule is used again, since the rule checks the callback is its own.
+        val ruleCallback = ViewRootForTest.onViewCreatedCallback
+        ViewRootForTest.onViewCreatedCallback = {
+            ruleCallback?.invoke(it)
+            roots += it
+        }
+        repeat(SETTLE_FRAMES) {
+            composeRule.mainClock.advanceTimeByFrame()
+            ShadowLooper.idleMainLooper()
+        }
+        ViewRootForTest.onViewCreatedCallback = ruleCallback
+        // With a focused field's cursor blinking, Compose never goes idle, so these find the dialog's nodes without
+        // the rule, which would wait for idle.
+        type?.let { text ->
+            val setText = nodesNow().last { SemanticsActions.SetText in it.config }.config[SemanticsActions.SetText]
+            composeRule.runOnUiThread { setText.action?.invoke(AnnotatedString(text)) }
+            repeat(SETTLE_FRAMES) {
+                composeRule.mainClock.advanceTimeByFrame()
+                ShadowLooper.idleMainLooper()
+            }
+        }
+        thenClick?.let { label ->
+            val click = nodesNow().last { node ->
+                SemanticsActions.OnClick in node.config &&
+                    node.config.getOrNull(SemanticsProperties.Text).orEmpty().any { it.text == label }
+            }.config[SemanticsActions.OnClick]
+            composeRule.runOnUiThread { click.action?.invoke() }
+        }
         repeat(SETTLE_FRAMES) {
             composeRule.mainClock.advanceTimeByFrame()
             ShadowLooper.idleMainLooper()
@@ -285,11 +520,38 @@ class HomeScreenScreenshotTest {
         captureScreenRoboImage(path)
     }
 
+    private val roots = mutableListOf<ViewRootForTest>()
+
+    /** Every merged semantics node in the windows recorded in [roots], read without waiting for idle. */
+    private fun nodesNow(): List<SemanticsNode> {
+        var nodes = emptyList<SemanticsNode>()
+        composeRule.runOnUiThread {
+            nodes = roots.filter { it.view.isAttachedToWindow }.flatMap {
+                it.semanticsOwner.getAllSemanticsNodes(mergingEnabled = true)
+            }
+        }
+        return nodes
+    }
+
     /** Localized times put a narrow no-break space before AM/PM; matches it as a plain space. */
     private fun contentDescriptionIgnoringNarrowSpaces(value: String) =
         SemanticsMatcher("ContentDescription = '$value'") { node ->
             node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
                 .any { it.replace('\u202F', ' ') == value }
+        }
+
+    /** Like the ViewModel: invalid names come back as the error, valid ones are accepted. */
+    private fun rejectInvalid(name: String): TagNames.Result? =
+        TagNames.validate(name).takeIf { it !is TagNames.Result.Valid }
+
+    /** Like the ViewModel: also refuses a name another tag has, ignoring case. */
+    private fun rejectRename(tags: List<Tag>, tag: Tag, input: String): TagNames.Result? =
+        when (val result = TagNames.validate(input)) {
+            is TagNames.Result.Valid -> TagNames.Result.Taken.takeIf {
+                tags.any { it.id != tag.id && TagNames.key(it.name) == TagNames.key(result.name) }
+            }
+
+            else -> result
         }
 
     private companion object {
@@ -341,6 +603,41 @@ class HomeScreenScreenshotTest {
             recording("2026-10-01T09:05:00Z", null, 168_000),
             recording("2026-10-01T09:05:00Z", null, 195_000, extension = "aac")
         ) + LIBRARY.drop(1)
+
+        val WORK = Tag(1, "Work")
+        val IDEAS = Tag(2, "Ideas")
+        val ERRANDS = Tag(3, "Errands")
+        val UNUSED = Tag(4, "Travel")
+        val TAGS = listOf(WORK, IDEAS, ERRANDS, UNUSED)
+
+        // Sorted by name like the repository; one at the 30-character limit.
+        val MANY_TAGS = listOf(
+            Tag(10, "Building management and heat"),
+            ERRANDS,
+            Tag(11, "Family"),
+            IDEAS,
+            Tag(12, "Lectures"),
+            Tag(13, "Podcast drafts"),
+            UNUSED,
+            WORK
+        )
+
+        // Grocery list: Errands and Ideas. Interview: Work. Song idea: Ideas. The two untitled ones after them: Work.
+        val TAGGED_LIBRARY = LIBRARY.mapIndexed { index, recording ->
+            recording.copy(
+                tagIds = when (index) {
+                    1 -> setOf(ERRANDS.id, IDEAS.id)
+                    2 -> setOf(WORK.id, 10L)
+                    3, 4 -> setOf(WORK.id)
+                    5 -> setOf(IDEAS.id)
+                    else -> emptySet()
+                }
+            )
+        }
+
+        val ADD_TAG = listOf("Add tag")
+        val WORK_CHIP = listOf("Work")
+        const val TOO_LONG_NAME = "Weekly planning with the whole team"
 
         val UNPROCESSED_MENU = listOf("More options for Oct 1, 2026, 9:05 AM, unprocessed original")
     }

@@ -99,6 +99,12 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
         }
     }
 
+    LaunchedEffect(viewModel) {
+        viewModel.renameFailures.collect {
+            snackbarHostState.showSnackbar(resources.getString(R.string.message_rename_tag_taken))
+        }
+    }
+
     HomeScreen(
         recordingState = recordingState,
         recordings = library?.recordings,
@@ -109,6 +115,8 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
         onAddTag = viewModel::addTag,
         onSetTagged = viewModel::setTagged,
         onAddTagTo = viewModel::addTagTo,
+        onRenameTag = viewModel::renameTag,
+        onDeleteTag = viewModel::deleteTag,
         playback = playback,
         playbackPositionMs = { playbackPosition.value },
         onPlayClick = viewModel::togglePlayback,
