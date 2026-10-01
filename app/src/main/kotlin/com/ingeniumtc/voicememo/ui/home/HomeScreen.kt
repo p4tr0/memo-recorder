@@ -96,6 +96,7 @@ fun HomeScreen(
     /** Null while loading, so the empty state doesn't flash before the first query returns. */
     recordings: List<Recording>? = emptyList(),
     playback: PlaybackState = PlaybackState(),
+    playbackPositionMs: () -> Long = { 0 },
     onPlayClick: (Recording, String) -> Unit = { _, _ -> },
     onSeek: (Long) -> Unit = {},
     onRename: (Recording, String) -> Unit = { _, _ -> },
@@ -147,6 +148,7 @@ fun HomeScreen(
                     Content.Library -> RecordingList(
                         recordings = recordings.orEmpty(),
                         playback = playback,
+                        playbackPositionMs = playbackPositionMs,
                         onPlayClick = onPlayClick,
                         onSeek = onSeek,
                         onRename = onRename,

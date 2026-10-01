@@ -1,7 +1,9 @@
 package com.ingeniumtc.voicememo.ui.home
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -17,9 +19,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
@@ -29,9 +35,11 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,10 +47,21 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -61,6 +80,7 @@ import java.time.format.FormatStyle
 internal fun RecordingList(
     recordings: List<Recording>,
     playback: PlaybackState,
+    playbackPositionMs: () -> Long,
     onPlayClick: (Recording, String) -> Unit,
     onSeek: (Long) -> Unit,
     onRename: (Recording, String) -> Unit,
@@ -72,7 +92,38 @@ internal fun RecordingList(
     var renaming by rememberSaveable { mutableStateOf<String?>(null) }
     var deleting by rememberSaveable { mutableStateOf<String?>(null) }
 
-    LazyColumn(modifier = modifier, contentPadding = PaddingValues(vertical = 8.dp)) {
+    val listState = rememberLazyListState()
+    // Fades the bottom edge while more rows are below, so the list visibly runs under the record controls
+    // instead of being cut off by them.
+    val edge by animateFloatAsState(
+        targetValue = if (listState.canScrollForward) 1f else 0f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "edgeFade"
+    )
+    val edgeColor = MaterialTheme.colorScheme.background
+    LazyColumn(
+        state = listState,
+        modifier = modifier.drawWithContent {
+            drawContent()
+            val height = EDGE_FADE.toPx().coerceAtMost(size.height)
+            if (edge > 0f) {
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        listOf(edgeColor.copy(alpha = 0f), edgeColor),
+                        startY = size.height - height,
+                        endY = size.height
+                    ),
+                    topLeft = Offset(0f, size.height - height),
+                    size = Size(size.width, height),
+                    alpha = edge
+                )
+            }
+        },
+        // The bottom padding lets the last row scroll fully clear of the fade.
+        contentPadding = PaddingValues(top = 8.dp, bottom = EDGE_FADE),
+        // Keeps the tinted current row from touching its neighbors.
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
         items(recordings, key = { it.id }) { recording ->
             val title = displayTitle(recording, zone)
             RecordingRow(
@@ -80,6 +131,7 @@ internal fun RecordingList(
                 title = title,
                 subtitle = subtitle(recording, zone),
                 playback = playback.takeIf { it.currentId == recording.id },
+                playbackPositionMs = playbackPositionMs,
                 onPlayClick = { onPlayClick(recording, title) },
                 onSeek = onSeek,
                 onRenameClick = { renaming = recording.id },
@@ -119,6 +171,7 @@ private fun RecordingRow(
     title: String,
     subtitle: String,
     playback: PlaybackState?,
+    playbackPositionMs: () -> Long,
     onPlayClick: () -> Unit,
     onSeek: (Long) -> Unit,
     onRenameClick: () -> Unit,
@@ -127,66 +180,97 @@ private fun RecordingRow(
     modifier: Modifier = Modifier
 ) {
     val playing = playback?.isPlaying == true
+    val current = playback != null
     val playLabel = stringResource(if (playing) R.string.action_pause_playback else R.string.action_play, title)
-    Column(modifier.fillMaxWidth()) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable(onClickLabel = playLabel, onClick = onPlayClick)
-                .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            FilledTonalIconButton(
-                onClick = onPlayClick,
-                colors = if (playback != null) {
-                    IconButtonDefaults.filledIconButtonColors()
-                } else {
-                    IconButtonDefaults.filledTonalIconButtonColors()
-                }
+    // The current row sits on a subtle tint, so it reads as one unit with its seek bar.
+    val tint = MaterialTheme.colorScheme.surfaceContainer
+    val container by animateColorAsState(
+        targetValue = if (current) tint else tint.copy(alpha = 0f),
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "rowContainer"
+    )
+    // At large font scales one line can't hold a date and time, so text wraps instead of hiding the time.
+    val maxLines = if (LocalDensity.current.fontScale >= LARGE_FONT_SCALE) 2 else 1
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .clip(ROW_SHAPE)
+            .drawBehind { drawRect(container) }
+    ) {
+        Box {
+            // The whole row is a tap target for play, but TalkBack gets it once, from the labeled play button.
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clearAndSetSemantics {}
+                    .clickable(onClick = onPlayClick)
+            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 8.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Icon(
-                    painter = painterResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play),
-                    contentDescription = playLabel
-                )
+                FilledTonalIconButton(
+                    onClick = onPlayClick,
+                    colors = if (current) {
+                        IconButtonDefaults.filledIconButtonColors()
+                    } else {
+                        IconButtonDefaults.filledTonalIconButtonColors()
+                    }
+                ) {
+                    Icon(
+                        painter = painterResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play),
+                        contentDescription = playLabel
+                    )
+                }
+                // One TalkBack stop for title and subtitle.
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .semantics(mergeDescendants = true) {}
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = maxLines,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = maxLines,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                OverflowMenu(title, onRenameClick, onShareClick, onDeleteClick)
             }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            OverflowMenu(title, onRenameClick, onShareClick, onDeleteClick)
         }
         AnimatedVisibility(
-            visible = playback != null,
+            visible = current,
             enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
             exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
         ) {
             // Falls back to the stored duration until the player has read the file's own.
             val durationMs = playback?.durationMs?.takeIf { it > 0 } ?: recording.durationMs
-            SeekBar(positionMs = playback?.positionMs ?: 0, durationMs = durationMs, onSeek = onSeek)
+            SeekBar(positionMs = playbackPositionMs, durationMs = durationMs, onSeek = onSeek)
         }
     }
 }
 
 @Composable
-private fun SeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) {
+private fun SeekBar(positionMs: () -> Long, durationMs: Long, onSeek: (Long) -> Unit) {
+    val position = positionMs()
     // While dragging, the thumb follows the finger; the player is only told on release.
     var dragFraction by remember { mutableStateOf<Float?>(null) }
-    val fraction = dragFraction ?: if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
-    val shownMs = dragFraction?.let { (it * durationMs).toLong() } ?: positionMs
+    val fraction = dragFraction ?: if (durationMs > 0) (position.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+    val shownMs = dragFraction?.let { (it * durationMs).toLong() } ?: position
     val label = stringResource(R.string.seek_position)
-    Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp)) {
+    val state = stringResource(R.string.seek_state, formatElapsed(shownMs), formatElapsed(durationMs))
+    Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
         Slider(
             value = fraction,
             onValueChange = { dragFraction = it },
@@ -195,9 +279,20 @@ private fun SeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) 
                 dragFraction = null
             },
             enabled = durationMs > 0,
-            modifier = Modifier.semantics { contentDescription = label }
+            // The default inactive track (secondaryContainer) nearly vanishes on the row tint.
+            colors = SliderDefaults.colors(inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.semantics {
+                contentDescription = label
+                stateDescription = state
+            }
         )
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        // Already spoken as the slider's state.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clearAndSetSemantics {},
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
             val style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
             Text(formatElapsed(shownMs), style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(formatElapsed(durationMs), style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -244,6 +339,9 @@ private fun OverflowMenu(title: String, onRename: () -> Unit, onShare: () -> Uni
 @Composable
 private fun RenameDialog(initial: String, placeholder: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var value by remember { mutableStateOf(TextFieldValue(initial, selection = TextRange(0, initial.length))) }
+    // Focused with the old name selected, so typing replaces it right away.
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(focusRequester) { focusRequester.requestFocus() }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.rename_title)) },
@@ -259,7 +357,8 @@ private fun RenameDialog(initial: String, placeholder: String, onDismiss: () -> 
                     capitalization = KeyboardCapitalization.Sentences,
                     imeAction = ImeAction.Done
                 ),
-                keyboardActions = KeyboardActions(onDone = { onConfirm(value.text) })
+                keyboardActions = KeyboardActions(onDone = { onConfirm(value.text) }),
+                modifier = Modifier.focusRequester(focusRequester)
             )
         },
         confirmButton = {
@@ -276,8 +375,15 @@ private fun DeleteDialog(title: String, onDismiss: () -> Unit, onConfirm: () -> 
         title = { Text(stringResource(R.string.delete_title)) },
         text = { Text(stringResource(R.string.delete_body, title)) },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
+            // Filled, so the irreversible action outweighs Cancel (both would otherwise be reddish text).
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                )
+            ) {
+                Text(stringResource(R.string.action_delete))
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } }
@@ -301,3 +407,7 @@ private fun subtitle(recording: Recording, zone: ZoneId): String {
 
 // Built per call: a localized formatter captures the default locale when it's created.
 private fun dateTime(): DateTimeFormatter = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+
+private val ROW_SHAPE = RoundedCornerShape(20.dp)
+private val EDGE_FADE = 24.dp
+private const val LARGE_FONT_SCALE = 1.5f

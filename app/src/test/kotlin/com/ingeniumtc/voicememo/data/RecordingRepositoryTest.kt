@@ -157,5 +157,30 @@ class RecordingRepositoryTest {
         assertEquals(1, repository.recordings.first().size)
     }
 
+    @Test
+    fun `a directory that can't be listed keeps every row and title`() = runTest {
+        file("2026-10-01_09-05-00.m4a")
+        repository.sync()
+        repository.rename(repository.recordings.first().single(), "Keep me")
+
+        dir.setReadable(false)
+        try {
+            repository.sync()
+        } finally {
+            dir.setReadable(true)
+        }
+        assertEquals("Keep me", repository.recordings.first().single().title)
+    }
+
+    @Test
+    fun `an m4a and the raw aac kept next to it are both listed and told apart`() = runTest {
+        file("2026-10-01_09-05-00.m4a")
+        file("2026-10-01_09-05-00.aac")
+        repository.sync()
+        val recordings = repository.recordings.first()
+        assertEquals(2, recordings.size)
+        assertEquals(listOf(false, true), recordings.sortedBy { it.id.endsWith(".aac") }.map { it.isRawAac })
+    }
+
     private fun file(name: String): File = File(dir, name).apply { writeText(FAKE_AUDIO) }
 }

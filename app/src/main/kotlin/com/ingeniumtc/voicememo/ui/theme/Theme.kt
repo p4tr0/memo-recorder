@@ -18,11 +18,22 @@ private val DarkColors = darkColorScheme(
     onBackground = Color.White,
     surface = Ink,
     onSurface = Color.White,
+    surfaceVariant = InkHigh,
+    surfaceContainerLowest = InkLowest,
+    surfaceContainerLow = InkLow,
     surfaceContainer = InkRaised,
     surfaceContainerHigh = InkHigh,
+    surfaceContainerHighest = InkHighest,
     secondaryContainer = InkHigh,
     onSecondaryContainer = Color.White,
-    onSurfaceVariant = Mist
+    onSurfaceVariant = Mist,
+    outline = Pewter,
+    outlineVariant = InkLine,
+    inverseSurface = Paper,
+    inverseOnSurface = Ink,
+    inversePrimary = CoralDeep,
+    error = DangerSoft,
+    onError = Ink
 )
 
 private val LightColors = lightColorScheme(
@@ -32,10 +43,23 @@ private val LightColors = lightColorScheme(
     onBackground = Ink,
     surface = Paper,
     onSurface = Ink,
+    surfaceVariant = PaperSunken,
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = PaperLow,
     surfaceContainer = PaperRaised,
+    // Dialogs sit on this. Brighter than the background, not darker, so CoralDeep buttons keep 4.5:1.
+    surfaceContainerHigh = PaperBright,
+    surfaceContainerHighest = PaperSunken,
     secondaryContainer = PaperSunken,
     onSecondaryContainer = Ink,
-    onSurfaceVariant = Slate
+    onSurfaceVariant = Slate,
+    outline = Stone,
+    outlineVariant = PaperLine,
+    inverseSurface = Ink,
+    inverseOnSurface = Paper,
+    inversePrimary = Coral,
+    error = Danger,
+    onError = Color.White
 )
 
 @Composable

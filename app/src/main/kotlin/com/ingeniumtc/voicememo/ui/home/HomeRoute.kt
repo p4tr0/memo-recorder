@@ -41,6 +41,8 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
     val amplitude = viewModel.amplitude.collectAsStateWithLifecycle()
     val recordings by viewModel.recordings.collectAsStateWithLifecycle()
     val playback by viewModel.playbackState.collectAsStateWithLifecycle()
+    // Read only inside the seek bar, like amplitude, so ticks don't recompose the screen.
+    val playbackPosition = viewModel.playbackPositionMs.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val resources = LocalResources.current
     val activity = LocalActivity.current
@@ -101,6 +103,7 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
         recordingState = recordingState,
         recordings = recordings,
         playback = playback,
+        playbackPositionMs = { playbackPosition.value },
         onPlayClick = viewModel::togglePlayback,
         onSeek = viewModel::seekTo,
         onRename = viewModel::rename,

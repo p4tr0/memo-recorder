@@ -83,9 +83,14 @@ class RecordingStorage(private val dir: File, private val remuxer: AudioRemuxer)
         partial.delete()
     }
 
-    /** Finished recordings (`.m4a`, or `.aac` kept when remuxing failed). Never includes an in-progress `.part`. */
-    fun finishedFiles(): List<File> =
-        dir.listFiles { f -> f.isFile && (f.name.endsWith(M4A) || f.name.endsWith(AAC)) }.orEmpty().toList()
+    /**
+     * Finished recordings (`.m4a`, or `.aac` kept when remuxing failed). Never includes an in-progress `.part`.
+     * Null if the directory couldn't be listed, which must not be mistaken for "no recordings".
+     */
+    fun finishedFiles(): List<File>? {
+        if (!dir.exists()) return emptyList() // Nothing recorded yet.
+        return dir.listFiles { f -> f.isFile && (f.name.endsWith(M4A) || f.name.endsWith(AAC)) }?.toList()
+    }
 
     /** The finished recording called [fileName]. Names come from [finishedFiles], so never contain a path. */
     fun fileNamed(fileName: String): File = File(dir, fileName)

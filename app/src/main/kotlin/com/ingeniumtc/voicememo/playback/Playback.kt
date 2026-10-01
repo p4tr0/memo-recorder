@@ -3,12 +3,14 @@ package com.ingeniumtc.voicememo.playback
 import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.ingeniumtc.voicememo.data.Recording
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -20,16 +22,17 @@ import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-/** What is loaded in the player. [currentId] is a [Recording.id], or null when nothing is loaded. */
-data class PlaybackState(
-    val currentId: String? = null,
-    val isPlaying: Boolean = false,
-    val positionMs: Long = 0,
-    val durationMs: Long = 0
-)
+/**
+ * What is loaded in the player. [currentId] is a [Recording.id], or null when nothing is loaded. The position is
+ * separate ([Playback.positionMs]) because it changes every tick and only the seek bar needs it.
+ */
+data class PlaybackState(val currentId: String? = null, val isPlaying: Boolean = false, val durationMs: Long = 0)
 
 interface Playback {
     val state: StateFlow<PlaybackState>
+
+    /** Updates every few hundred ms while playing. */
+    val positionMs: StateFlow<Long>
 
     /** Plays [recording], or pauses/resumes it if it is already the current one. [title] shows in the notification. */
     fun toggle(recording: Recording, title: String)
@@ -53,15 +56,28 @@ class MediaControllerPlayback(context: Context, private val scope: CoroutineScop
         context,
         SessionToken(context, ComponentName(context, PlaybackService::class.java))
     ).buildAsync()
-    private val controller = scope.async { future.await() }
+
+    // Null if the connection failed (service crashed or refused): playback is then unavailable, not a crash.
+    private val controller = scope.async {
+        try {
+            future.await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not connect to the playback service", e)
+            null
+        }
+    }
 
     private val _state = MutableStateFlow(PlaybackState())
     override val state: StateFlow<PlaybackState> = _state.asStateFlow()
+    private val _positionMs = MutableStateFlow(0L)
+    override val positionMs: StateFlow<Long> = _positionMs.asStateFlow()
     private var ticker: Job? = null
 
     init {
         scope.launch {
-            val c = controller.await()
+            val c = controller.await() ?: return@launch
             c.addListener(
                 object : Player.Listener {
                     override fun onEvents(player: Player, events: Player.Events) {
@@ -123,7 +139,7 @@ class MediaControllerPlayback(context: Context, private val scope: CoroutineScop
     }
 
     private fun command(block: (MediaController) -> Unit) {
-        scope.launch { block(controller.await()) }
+        scope.launch { controller.await()?.let(block) }
     }
 
     /** Position only changes continuously while playing, so poll it then and not otherwise. */
@@ -140,15 +156,17 @@ class MediaControllerPlayback(context: Context, private val scope: CoroutineScop
 
     private fun publish(player: Player) {
         val item = player.currentMediaItem
+        // StateFlow skips equal values, so ticks only reach position collectors.
         _state.value = PlaybackState(
             currentId = item?.mediaId,
             isPlaying = player.isPlaying,
-            positionMs = player.currentPosition.coerceAtLeast(0),
             durationMs = player.duration.takeIf { it > 0 } ?: 0
         )
+        _positionMs.value = player.currentPosition.coerceAtLeast(0)
     }
 
     private companion object {
+        const val TAG = "Playback"
         const val POSITION_TICK_MS = 200L
     }
 }

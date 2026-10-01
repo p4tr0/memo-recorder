@@ -16,11 +16,12 @@ import com.ingeniumtc.voicememo.recording.RecordingEvent
 import com.ingeniumtc.voicememo.recording.RecordingService
 import com.ingeniumtc.voicememo.recording.RecordingState
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -36,14 +37,16 @@ class HomeViewModel(
     val amplitude: StateFlow<Float> = controller.amplitude
     val events: SharedFlow<RecordingEvent> = controller.events
     val playbackState: StateFlow<PlaybackState> = playback.state
+    val playbackPositionMs: StateFlow<Long> = playback.positionMs
 
     val recordings: StateFlow<List<Recording>?> =
         repository.recordings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
 
-    private val _deleteFailures = MutableSharedFlow<Recording>(extraBufferCapacity = 1)
+    // A channel, not a shared flow, so a failure isn't dropped while the screen resubscribes after rotation.
+    private val _deleteFailures = Channel<Recording>(Channel.BUFFERED)
 
     /** Recordings whose file couldn't be deleted. They stay in the list. */
-    val deleteFailures: SharedFlow<Recording> = _deleteFailures.asSharedFlow()
+    val deleteFailures: Flow<Recording> = _deleteFailures.receiveAsFlow()
 
     /** Requires RECORD_AUDIO to be granted already. */
     fun startRecording() {
@@ -72,7 +75,7 @@ class HomeViewModel(
     fun delete(recording: Recording) {
         playback.stop(recording.id)
         viewModelScope.launch {
-            if (!repository.delete(recording)) _deleteFailures.tryEmit(recording)
+            if (!repository.delete(recording)) _deleteFailures.trySend(recording)
         }
     }
 

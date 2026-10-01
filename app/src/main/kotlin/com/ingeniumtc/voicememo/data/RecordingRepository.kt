@@ -7,6 +7,7 @@ import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
@@ -22,6 +23,12 @@ data class Recording(
     val sizeBytes: Long
 ) {
     val id: String get() = file.name
+
+    /**
+     * The raw stream kept when remuxing failed or dropped audio. It may sit next to an `.m4a` of the same
+     * recording, and is then the complete copy, so the UI must make the two distinguishable.
+     */
+    val isRawAac: Boolean get() = file.extension == "aac"
 }
 
 /**
@@ -44,7 +51,11 @@ class RecordingRepository(
     /** Adds rows for files without one and drops rows whose file is gone. */
     suspend fun sync() = withContext(ioDispatcher) {
         mutex.withLock {
-            val files = storage.finishedFiles()
+            // Treating a failed listing as empty would drop every row, and with them every title.
+            val files = storage.finishedFiles() ?: run {
+                Log.w(TAG, "Could not list recordings, skipping sync")
+                return@withLock
+            }
             val known = dao.allFileNames().toSet()
             val present = files.mapTo(HashSet()) { it.name }
             val added = files.filter { it.name !in known }.map { file ->
@@ -63,12 +74,15 @@ class RecordingRepository(
     }
 
     /** A blank title resets it to the date. */
-    suspend fun rename(recording: Recording, title: String) = withContext(ioDispatcher) {
+    suspend fun rename(recording: Recording, title: String) = withContext(ioDispatcher + NonCancellable) {
         dao.setTitle(recording.id, title.trim().ifEmpty { null })
     }
 
-    /** User-initiated, after confirmation. Returns false if the file couldn't be deleted (the row then stays). */
-    suspend fun delete(recording: Recording): Boolean = withContext(ioDispatcher) {
+    /**
+     * User-initiated, after confirmation. Returns false if the file couldn't be deleted (the row then stays).
+     * Not cancellable: leaving the screen between deleting the file and its row would leave a ghost row.
+     */
+    suspend fun delete(recording: Recording): Boolean = withContext(ioDispatcher + NonCancellable) {
         mutex.withLock {
             val file = storage.fileNamed(recording.id)
             val gone = !file.exists() || file.delete()
