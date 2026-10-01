@@ -28,6 +28,9 @@ sealed interface RecordingEvent {
         TooShort,
 
         /** The recorder failed mid-recording and the file could not be finalized. */
-        RecorderError
+        RecorderError,
+
+        /** The audio was captured but couldn't be finalized. It's kept and finished on the next launch. */
+        SaveFailed
     }
 }

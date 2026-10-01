@@ -12,14 +12,16 @@ import com.ingeniumtc.voicememo.recording.RecordingState
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
-class HomeViewModel(private val controller: RecordingController, private val startRecordingService: () -> Unit) :
+class HomeViewModel(private val controller: RecordingController, private val startRecordingService: () -> Boolean) :
     ViewModel() {
     val recordingState: StateFlow<RecordingState> = controller.state
     val amplitude: StateFlow<Float> = controller.amplitude
     val events: SharedFlow<RecordingEvent> = controller.events
 
     /** Requires RECORD_AUDIO to be granted already. */
-    fun startRecording() = startRecordingService()
+    fun startRecording() {
+        if (!startRecordingService()) controller.reportStartFailure()
+    }
 
     fun pause() = controller.pause()
 

@@ -16,8 +16,11 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.core.app.ActivityCompat
@@ -39,6 +42,9 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    // The rationale flag alone can't tell "don't ask again" from a dismissed first dialog: both read false.
+    var rationaleBeforeRequest by rememberSaveable { mutableStateOf(false) }
+    var deniedBefore by rememberSaveable { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
@@ -46,9 +52,12 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
             viewModel.startRecording()
             return@rememberLauncherForActivityResult
         }
-        // No rationale after a denial means "don't ask again": only Settings can grant it now.
-        val permanentlyDenied = activity != null &&
-            !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.RECORD_AUDIO)
+        val rationaleNow = activity != null &&
+            ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.RECORD_AUDIO)
+        // Only Settings can grant it once the rationale is gone after the user had already been asked: either it
+        // was showing before this request, or an earlier request this session was denied too.
+        val permanentlyDenied = !rationaleNow && (rationaleBeforeRequest || deniedBefore)
+        deniedBefore = true
         scope.launch {
             val result = snackbarHostState.showSnackbar(
                 message = resources.getString(R.string.message_mic_permission_needed),
@@ -68,6 +77,7 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
                     RecordingEvent.Reason.CouldNotStart -> resources.getString(R.string.message_could_not_start)
                     RecordingEvent.Reason.TooShort -> resources.getString(R.string.message_too_short)
                     RecordingEvent.Reason.RecorderError -> resources.getString(R.string.message_recorder_error)
+                    RecordingEvent.Reason.SaveFailed -> resources.getString(R.string.message_save_failed)
                 }
             }
             snackbarHostState.showSnackbar(message)
@@ -84,6 +94,8 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
             ) {
                 viewModel.startRecording()
             } else {
+                rationaleBeforeRequest = activity != null &&
+                    ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.RECORD_AUDIO)
                 permissionLauncher.launch(recordingPermissions())
             }
         },

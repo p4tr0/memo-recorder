@@ -129,14 +129,19 @@ class RecordingController(
 
         // Even when stop() failed, ADTS frames written before the failure are playable, so try to keep them.
         // Saving happens before going Idle so the foreground service keeps the process alive meanwhile.
-        val saved = runCatching { storage.commit(partial) }
+        val commit = runCatching { storage.commit(partial) }
             .onFailure { Log.e(TAG, "Could not save ${partial.name}", it) }
-            .getOrNull()
+        val saved = commit.getOrNull()
         _state.value = RecordingState.Idle
         _events.tryEmit(
             when {
                 saved != null -> RecordingEvent.Saved(saved, duration)
+
+                // The audio is still in the partial, and the next launch's recovery finishes it.
+                commit.isFailure -> RecordingEvent.Failed(RecordingEvent.Reason.SaveFailed)
+
                 stopped -> RecordingEvent.Failed(RecordingEvent.Reason.TooShort)
+
                 else -> RecordingEvent.Failed(failureReason)
             }
         )

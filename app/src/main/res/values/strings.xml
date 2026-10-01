@@ -6,6 +6,19 @@
 
     <string name="status_recording">Recording</string>
     <string name="status_paused">Paused</string>
+    <!-- Spoken by TalkBack when recording pauses, e.g. "Paused, 12 minutes 34 seconds". -->
+    <plurals name="duration_hours">
+        <item quantity="one">%d hour</item>
+        <item quantity="other">%d hours</item>
+    </plurals>
+    <plurals name="duration_minutes">
+        <item quantity="one">%d minute</item>
+        <item quantity="other">%d minutes</item>
+    </plurals>
+    <plurals name="duration_seconds">
+        <item quantity="one">%d second</item>
+        <item quantity="other">%d seconds</item>
+    </plurals>
 
     <string name="action_record">Start recording</string>
     <string name="action_stop_recording">Stop recording</string>
@@ -23,4 +36,5 @@
     <string name="message_could_not_start">Couldn\'t start recording. The microphone may be in use by another app.</string>
     <string name="message_too_short">Recording was too short to save</string>
     <string name="message_recorder_error">Recording failed and couldn\'t be saved</string>
+    <string name="message_save_failed">Recording kept but not fully saved yet. It will be finished automatically.</string>
 </resources>

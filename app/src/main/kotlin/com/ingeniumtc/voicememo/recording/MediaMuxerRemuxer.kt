@@ -10,7 +10,7 @@ import java.nio.ByteBuffer
 /** ADTS (.aac) to MPEG-4 (.m4a). Copies AAC frames as-is, so it is lossless and fast (about 1s per hour of audio). */
 internal class MediaMuxerRemuxer : AudioRemuxer {
 
-    override fun remux(input: File, output: File) {
+    override fun remux(input: File, output: File): RemuxResult {
         val extractor = MediaExtractor()
         try {
             extractor.setDataSource(input.path)
@@ -32,17 +32,20 @@ internal class MediaMuxerRemuxer : AudioRemuxer {
                 val outTrack = muxer.addTrack(format)
                 muxer.start()
                 var samples = 0
+                var payloadBytes = 0L
                 while (true) {
                     val size = extractor.readSampleData(buffer, 0)
                     if (size < 0) break
                     info.set(0, size, extractor.sampleTime, MediaCodec.BUFFER_FLAG_KEY_FRAME)
                     muxer.writeSampleData(outTrack, buffer, info)
                     samples++
+                    payloadBytes += size
                     extractor.advance()
                 }
                 // MediaMuxer.stop() throws on an empty track, so report it as what it is.
                 if (samples == 0) throw NoAudioException("No audio frames in ${input.name}")
                 muxer.stop()
+                return RemuxResult(samples, payloadBytes)
             } finally {
                 muxer.release()
             }

@@ -7,6 +7,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -27,7 +28,6 @@ class RecordingService : Service() {
 
     private val controller by lazy { (application as VoiceMemoApp).container.recordingController }
     private val scope = MainScope()
-    private var sessionStarted = false
     private var lastStartId = 0
 
     override fun onCreate() {
@@ -35,20 +35,14 @@ class RecordingService : Service() {
         RecordingNotifications.ensureChannel(this)
         scope.launch {
             controller.state.collect { state ->
-                when (state) {
-                    is RecordingState.Active -> {
-                        sessionStarted = true
-                        updateNotification(state)
-                    }
-
-                    RecordingState.Idle -> if (sessionStarted) shutDown()
-                }
+                if (state is RecordingState.Active) updateNotification(state)
             }
         }
         scope.launch {
-            controller.events.collect { event ->
-                // A failed start never leaves Idle, so the state collector alone wouldn't stop us.
-                if (event is RecordingEvent.Failed && !sessionStarted) shutDown()
+            // Every session, and every failed start, ends with exactly one event. Ending on events rather than
+            // on Idle also covers a session so short that the conflated state flow never showed it as Active.
+            controller.events.collect {
+                if (controller.state.value == RecordingState.Idle) shutDown()
             }
         }
     }
@@ -60,9 +54,8 @@ class RecordingService : Service() {
             ACTION_START -> if (current != null) {
                 // Double tap: every startForegroundService needs a startForeground, but keep the live session.
                 promoteToForeground(current)
-            } else {
-                sessionStarted = false
-                if (promoteToForeground(null)) controller.start()
+            } else if (promoteToForeground(null)) {
+                controller.start()
             }
 
             // Actions from a notification that outlived its session (or a system restart) have nothing to do.
@@ -123,16 +116,23 @@ class RecordingService : Service() {
     }
 
     companion object {
+        private const val TAG = "RecordingService"
         internal const val ACTION_START = "com.ingeniumtc.voicememo.action.START"
         internal const val ACTION_PAUSE = "com.ingeniumtc.voicememo.action.PAUSE"
         internal const val ACTION_RESUME = "com.ingeniumtc.voicememo.action.RESUME"
         internal const val ACTION_STOP = "com.ingeniumtc.voicememo.action.STOP"
 
-        fun start(context: Context) {
+        /** Returns false if the system refused to start the service. */
+        fun start(context: Context): Boolean = try {
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, RecordingService::class.java).setAction(ACTION_START)
             )
+            true
+        } catch (e: IllegalStateException) {
+            // ForegroundServiceStartNotAllowedException (API 31+) or a background start limit on 26+.
+            Log.w(TAG, "Could not start recording service", e)
+            false
         }
     }
 }

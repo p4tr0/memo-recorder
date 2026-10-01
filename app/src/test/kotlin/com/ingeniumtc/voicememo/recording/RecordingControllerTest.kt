@@ -2,6 +2,7 @@ package com.ingeniumtc.voicememo.recording
 
 import app.cash.turbine.test
 import java.io.File
+import java.io.IOException
 import java.time.LocalDateTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -154,6 +155,32 @@ class RecordingControllerTest {
     }
 
     @Test
+    fun `audio that can't be saved under any name is reported as SaveFailed and kept for recovery`() = runTest {
+        val dir = tmp.newFolder("recordings")
+        val controller = RecordingController(
+            storage = RecordingStorage(dir, FakeRemuxer(failWith = IOException("muxer broke"))),
+            recorderFactory = { FakeRecorder().also { recorders += it } },
+            scope = backgroundScope,
+            dispatcher = StandardTestDispatcher(testScheduler),
+            clock = { nowMs },
+            now = { LocalDateTime.of(2026, 10, 1, 11, 30, 5) }
+        )
+        controller.events.test {
+            controller.start()
+            runCurrent()
+            dir.setWritable(false)
+            try {
+                controller.stop()
+                runCurrent()
+                assertEquals(RecordingEvent.Failed(RecordingEvent.Reason.SaveFailed), awaitItem())
+            } finally {
+                dir.setWritable(true)
+            }
+        }
+        assertEquals(listOf("2026-10-01_11-30-05.aac.part"), dir.list()!!.toList())
+    }
+
+    @Test
     fun `audio captured before a failed stop is still saved`() = runTest {
         val (controller, _) = controller { failOnStop = true }
         controller.events.test {
@@ -223,7 +250,7 @@ class RecordingControllerTest {
     @Test
     fun `interrupted recordings are recovered and junk is cleaned up`() = runTest {
         val (controller, dir) = controller()
-        File(dir, "cut-off.aac.part").writeText("audio")
+        File(dir, "cut-off.aac.part").writeText(FAKE_AUDIO)
         File(dir, "empty.aac.part").createNewFile()
         File(dir, "half-written.m4a.tmp").writeText("x")
         File(dir, "kept.m4a").writeText("x")
@@ -256,7 +283,7 @@ class RecordingControllerTest {
         override fun start(output: File) {
             if (failOnStart) throw IllegalStateException("mic busy")
             // MediaRecorder creates the file on start and streams frames into it.
-            if (writesAudio) output.writeText("audio") else output.createNewFile()
+            if (writesAudio) output.writeText(FAKE_AUDIO) else output.createNewFile()
             calls += "start"
         }
 
