@@ -18,10 +18,24 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // The release key lives outside the repo: its path and password come from ~/.gradle/gradle.properties.
+    // Every update must be signed with it, or Android refuses to install over the existing app.
+    val releaseKeystore = providers.gradleProperty("VOICEMEMO_KEYSTORE").orNull
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = providers.gradleProperty("VOICEMEMO_KEYSTORE_PASSWORD").get()
+                keyAlias = providers.gradleProperty("VOICEMEMO_KEY_ALIAS").get()
+                keyPassword = providers.gradleProperty("VOICEMEMO_KEYSTORE_PASSWORD").get()
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Personal sideloaded app, not on Play: the debug key is fine and avoids keystore management.
-            signingConfig = signingConfigs.getByName("debug")
+            // Never falls back to the debug key: without the release key, packaging fails (checkReleaseKey).
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -54,6 +68,21 @@ android {
         disable += setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion", "OldTargetApi")
     }
 }
+
+// Fails a release build without the release key, instead of producing an unsigned or debug-signed APK.
+val hasReleaseKey = providers.gradleProperty("VOICEMEMO_KEYSTORE").isPresent
+val checkReleaseKey = tasks.register("checkReleaseKey") {
+    val present = hasReleaseKey
+    doLast {
+        if (!present) {
+            throw GradleException(
+                "No release key: set VOICEMEMO_KEYSTORE, VOICEMEMO_KEYSTORE_PASSWORD and VOICEMEMO_KEY_ALIAS " +
+                    "in ~/.gradle/gradle.properties (see the release skill)."
+            )
+        }
+    }
+}
+tasks.matching { it.name == "packageRelease" }.configureEach { dependsOn(checkReleaseKey) }
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
