@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Resources
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -29,6 +30,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.p4tr0.voicememo.R
+import io.github.p4tr0.voicememo.data.ImportSummary
 import io.github.p4tr0.voicememo.data.Recording
 import io.github.p4tr0.voicememo.recording.RecordingEvent
 import java.time.ZoneId
@@ -72,6 +74,12 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
                 duration = SnackbarDuration.Long
             )
             if (result == SnackbarResult.ActionPerformed) openAppSettings(context)
+        }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.importResults.collect { summary ->
+            snackbarHostState.showSnackbar(importMessage(resources, summary))
         }
     }
 
@@ -149,11 +157,36 @@ private fun recordingPermissions(): Array<String> = buildList {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
 }.toTypedArray()
 
+/** "Imported 3 recordings", plus what was skipped or failed, if anything. */
+private fun importMessage(resources: Resources, summary: ImportSummary): String = buildList {
+    if (summary.imported > 0 || (summary.duplicates == 0 && summary.failed == 0)) {
+        add(resources.getQuantityString(R.plurals.message_imported, summary.imported, summary.imported))
+    }
+    if (summary.duplicates > 0) {
+        add(resources.getQuantityString(R.plurals.message_import_duplicates, summary.duplicates, summary.duplicates))
+    }
+    if (summary.failed > 0) {
+        add(resources.getQuantityString(R.plurals.message_import_failed, summary.failed, summary.failed))
+    }
+}.joinToString(" ")
+
+private fun mimeTypeOf(extension: String): String = when (extension.lowercase()) {
+    "aac" -> "audio/aac"
+    "mp3" -> "audio/mpeg"
+    "ogg", "oga" -> "audio/ogg"
+    "opus" -> "audio/opus"
+    "wav" -> "audio/wav"
+    "flac" -> "audio/flac"
+    "amr" -> "audio/amr"
+    "3gp" -> "audio/3gpp"
+    else -> "audio/mp4"
+}
+
 /** Hands a read-only content URI to the share sheet. The grant lasts only as long as the receiving activity. */
 private fun shareRecording(context: Context, recording: Recording) {
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", recording.file)
     val send = Intent(Intent.ACTION_SEND)
-        .setType(if (recording.file.extension == "aac") "audio/aac" else "audio/mp4")
+        .setType(mimeTypeOf(recording.file.extension))
         .putExtra(Intent.EXTRA_STREAM, uri)
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     context.startActivity(Intent.createChooser(send, context.getString(R.string.share_chooser_title)))

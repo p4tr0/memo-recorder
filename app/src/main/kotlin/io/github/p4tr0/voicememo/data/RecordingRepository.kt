@@ -89,6 +89,11 @@ class RecordingRepository(
         }
     }
 
+    /** Sets a title by file name, for files that have no [Recording] yet (just imported). Null shows the date. */
+    suspend fun setTitle(fileName: String, title: String?) = withContext(ioDispatcher + NonCancellable) {
+        dao.setTitle(fileName, title)
+    }
+
     /** A blank title resets it to the date. */
     suspend fun rename(recording: Recording, title: String) = withContext(ioDispatcher + NonCancellable) {
         dao.setTitle(recording.id, title.trim().ifEmpty { null })

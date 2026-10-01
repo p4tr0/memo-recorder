@@ -166,7 +166,8 @@ class HomeViewModelTest {
             withTimeout(5_000) { tagSelection.savedFlow.first { it == work.id } }
         }
 
-        val nextLaunch = HomeViewModel(controller, repository, tagSelection, { FakePlayback() }) { true }
+        val nextLaunch =
+            HomeViewModel(controller, repository, tagSelection, playbackFactory = { FakePlayback() }) { true }
         backgroundScope.launch { nextLaunch.library.collect {} }
         assertEquals(work, nextLaunch.awaitLibrary().selectedTag)
     }

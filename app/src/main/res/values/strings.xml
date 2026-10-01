@@ -95,4 +95,17 @@
     <string name="tag_none">No tag</string>
     <!-- Read by TalkBack with a recording, since its tag is otherwise shown only by color. -->
     <string name="tag_state">Tagged %1$s</string>
+    <!-- Shown after recordings are shared into the app; joined into one line, e.g. "Imported 3 recordings. 1 was already here." -->
+    <plurals name="message_imported">
+        <item quantity="one">Imported %1$d recording.</item>
+        <item quantity="other">Imported %1$d recordings.</item>
+    </plurals>
+    <plurals name="message_import_duplicates">
+        <item quantity="one">%1$d was already here.</item>
+        <item quantity="other">%1$d were already here.</item>
+    </plurals>
+    <plurals name="message_import_failed">
+        <item quantity="one">%1$d couldn\'t be imported.</item>
+        <item quantity="other">%1$d couldn\'t be imported.</item>
+    </plurals>
 </resources>

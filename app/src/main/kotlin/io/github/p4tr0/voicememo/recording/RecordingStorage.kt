@@ -89,11 +89,47 @@ class RecordingStorage(private val dir: File, private val remuxer: AudioRemuxer)
      */
     fun finishedFiles(): List<File>? {
         if (!dir.exists()) return emptyList() // Nothing recorded yet.
-        return dir.listFiles { f -> f.isFile && (f.name.endsWith(M4A) || f.name.endsWith(AAC)) }?.toList()
+        return dir.listFiles { f -> f.isFile && FINISHED_EXTENSIONS.any { f.name.endsWith(it) } }?.toList()
+    }
+
+    /**
+     * A temp file to copy an imported recording into. Not `.tmp`: launch-time recovery deletes those, and a share
+     * can cold-start the app while recovery runs. Leftovers from a kill mid-copy go via [deleteImportLeftovers].
+     */
+    fun newImportTemp(): File {
+        dir.mkdirs()
+        return File.createTempFile("import-", IMPORTING, dir)
+    }
+
+    /** Only call while no import is running. */
+    fun deleteImportLeftovers() {
+        dir.listFiles { f -> f.name.endsWith(IMPORTING) }?.forEach { it.delete() }
+    }
+
+    /**
+     * Moves a fully copied import into place under a name for [startedAt], keeping its own format. Synced to
+     * disk first, like a remuxed recording.
+     */
+    fun commitImport(temp: File, startedAt: LocalDateTime, extension: String): File {
+        val base = startedAt.format(FILE_NAME_FORMAT)
+        var candidate = base
+        var n = 2
+        while ((FINISHED_EXTENSIONS + PARTIAL).any { File(dir, "$candidate$it").exists() }) {
+            candidate = "$base-${n++}"
+        }
+        val target = File(dir, "$candidate.$extension")
+        fsync(temp)
+        if (!temp.renameTo(target)) throw IOException("Could not move ${temp.name} to ${target.name}")
+        fsyncDir()
+        return target
     }
 
     /** What every file of one recording shares: `2026-10-01_09-05-00` for its `.aac.part`, `.m4a` and `.aac`. */
-    fun baseName(file: File): String = file.name.removeSuffix(PARTIAL).removeSuffix(M4A).removeSuffix(AAC)
+    fun baseName(file: File): String {
+        if (file.name.endsWith(PARTIAL)) return file.name.removeSuffix(PARTIAL)
+        return FINISHED_EXTENSIONS.firstOrNull { file.name.endsWith(it) }?.let { file.name.removeSuffix(it) }
+            ?: file.name
+    }
 
     /**
      * The finished files of the recording [baseName] (normally one `.m4a`; also the raw `.aac` when remuxing
@@ -170,14 +206,19 @@ class RecordingStorage(private val dir: File, private val remuxer: AudioRemuxer)
         }
     }
 
-    private companion object {
+    internal companion object {
         const val TAG = "RecordingStorage"
         const val AAC = ".aac"
         const val M4A = ".m4a"
         const val PARTIAL = ".aac.part"
         const val TEMP = ".tmp"
+        const val IMPORTING = ".importing"
         const val RECOVERING = ".recovering"
         val FINAL_EXTENSIONS = listOf(M4A, AAC, PARTIAL)
+
+        /** Formats the app lists and plays: its own (m4a, raw aac) and those imported from other recorders. */
+        val IMPORTABLE_EXTENSIONS = setOf("m4a", "aac", "mp3", "ogg", "oga", "opus", "wav", "flac", "amr", "3gp")
+        val FINISHED_EXTENSIONS = IMPORTABLE_EXTENSIONS.map { ".$it" }
         val FILE_NAME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")
         const val FILE_NAME_LENGTH = "yyyy-MM-dd_HH-mm-ss".length
 

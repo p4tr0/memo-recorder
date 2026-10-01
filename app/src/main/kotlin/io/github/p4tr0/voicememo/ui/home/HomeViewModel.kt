@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.p4tr0.voicememo.VoiceMemoApp
+import io.github.p4tr0.voicememo.data.ImportSummary
 import io.github.p4tr0.voicememo.data.Recording
 import io.github.p4tr0.voicememo.data.RecordingRepository
 import io.github.p4tr0.voicememo.data.Tag
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -52,6 +54,8 @@ class HomeViewModel(
     private val controller: RecordingController,
     private val repository: RecordingRepository,
     private val tagSelection: TagSelection,
+    /** Results of recordings shared into the app from elsewhere. */
+    val importResults: Flow<ImportSummary> = emptyFlow(),
     playbackFactory: (CoroutineScope) -> Playback,
     private val startRecordingService: () -> Boolean
 ) : ViewModel() {
@@ -208,6 +212,7 @@ class HomeViewModel(
                     controller = app.container.recordingController,
                     repository = app.container.recordingRepository,
                     tagSelection = app.container.tagSelection,
+                    importResults = app.container.importResults,
                     playbackFactory = { scope -> MediaControllerPlayback(app, scope) },
                     startRecordingService = { RecordingService.start(app) }
                 )
