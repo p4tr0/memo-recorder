@@ -6,8 +6,8 @@ A simple, fast, stylish voice recorder and player for Android. **Personal use, s
 
 - Kotlin 2.4 with AGP 9 built-in Kotlin (there is no `org.jetbrains.kotlin.android` plugin; that's intentional), Jetpack Compose, Material 3
 - Recording: `MediaRecorder` streaming ADTS AAC to `<name>.aac.part`, inside a foreground service (`foregroundServiceType="microphone"`). On stop it's losslessly remuxed to `.m4a` with `MediaMuxer`. ADTS stays playable if the process is killed, and interrupted `.part` files are recovered at launch. **Never delete captured audio**: the `.m4a` is fsynced and checked to account for every ADTS byte before the source goes, otherwise the raw `.aac` is kept. Only files smaller than one frame are discarded.
-- Playback: Media3 ExoPlayer + `MediaSessionService`
-- Storage: audio in app-private `filesDir`, metadata in Room (KSP)
+- Playback: Media3 ExoPlayer + `MediaSessionService`, driven by a `MediaController`. The session's player is wrapped in `RecordingGuardPlayer`, which refuses to play while recording (media buttons and system controls bypass the UI).
+- Storage: audio in app-private `filesDir/recordings`, metadata in Room (KSP). **Files are the source of truth**: `RecordingRepository.sync()` adds rows for new `.m4a`/`.aac` files and drops rows whose file is gone, after every save and at launch. Only user-confirmed delete removes audio. Titles live only in Room, so never use a destructive migration.
 - Single `:app` module, MVVM with `StateFlow`, manual DI (no Hilt unless the graph gets painful)
 - minSdk 26, compileSdk/targetSdk 37. compileSdk 37 is required by current AndroidX releases.
 - All versions live in `gradle/libs.versions.toml`. Use stable releases only.
@@ -37,8 +37,8 @@ app/src/main/kotlin/com/ingeniumtc/voicememo/
   ui/theme/          Color.kt, Theme.kt (RecordRed stays fixed under dynamic color)
   ui/<feature>/      one package per screen: Screen composable, ViewModel, UI state
   recording/         controller, MediaRecorder wrapper, ADTS to m4a remuxer, storage, foreground service
-  playback/          player + media session service (planned)
-  data/              Room DB, DAO, repository (planned)
+  playback/          media session service, MediaController wrapper, recording guard
+  data/              Room DB, DAO, repository that syncs rows with files
 app/src/test/        Robolectric + Roborazzi tests; goldens in app/src/test/screenshots/
 app/src/androidTest/ instrumented tests on real MediaExtractor/MediaMuxer (ADTS fixture in assets/)
 ```
