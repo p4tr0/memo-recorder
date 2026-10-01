@@ -81,5 +81,8 @@
     <string name="tag_empty_title">No recordings tagged \u201c%1$s\u201d</string>
     <string name="tag_empty_body">New recordings made while this tag is selected get it automatically.</string>
     <string name="tag_error_blank">Enter a name</string>
-    <string name="tag_error_too_long">Use %1$d characters or fewer</string>
+    <plurals name="tag_error_too_long">
+        <item quantity="one">Use %1$d character or fewer</item>
+        <item quantity="other">Use %1$d characters or fewer</item>
+    </plurals>
 </resources>

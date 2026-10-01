@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
@@ -237,7 +238,9 @@ private fun TagNameDialog(title: String, onDismiss: () -> Unit, onConfirm: (Stri
 
 @Composable
 private fun tagNameError(result: TagNames.Result): String = when (result) {
-    TagNames.Result.TooLong -> stringResource(R.string.tag_error_too_long, TagNames.MAX_LENGTH)
+    TagNames.Result.TooLong ->
+        pluralStringResource(R.plurals.tag_error_too_long, TagNames.MAX_LENGTH, TagNames.MAX_LENGTH)
+
     else -> stringResource(R.string.tag_error_blank)
 }
 
