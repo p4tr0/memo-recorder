@@ -244,6 +244,39 @@ class RecordingRepositoryTest {
     }
 
     @Test
+    fun `renaming a tag keeps its recordings, and a name taken by another tag is refused`() = runTest {
+        file("2026-10-01_09-05-00.m4a")
+        repository.sync()
+        val work = repository.createTag("work")
+        repository.createTag("Ideas")
+        repository.setTagged(repository.recordings.first().single(), work, tagged = true)
+
+        assertTrue(repository.renameTag(work, "Work")) // A different case of its own name is fine.
+        assertFalse(repository.renameTag(work, "ideas"))
+        assertTrue(repository.renameTag(work, "Office"))
+
+        assertEquals(listOf("Office", "Ideas"), repository.tags.first().map { it.name })
+        assertEquals(setOf(work.id), repository.recordings.first().single().tagIds)
+        // The old name is free again: this makes a new tag rather than returning Office.
+        assertTrue(repository.createTag("work").id != work.id)
+    }
+
+    @Test
+    fun `deleting a tag untags its recordings and keeps them`() = runTest {
+        val audio = file("2026-10-01_09-05-00.m4a")
+        repository.sync()
+        val work = repository.createTag("Work")
+        repository.setTagged(repository.recordings.first().single(), work, tagged = true)
+
+        repository.deleteTag(work)
+
+        assertTrue(repository.tags.first().isEmpty())
+        val recording = repository.recordings.first().single()
+        assertTrue(recording.tagIds.isEmpty())
+        assertTrue(audio.exists())
+    }
+
+    @Test
     fun `deleting a recording keeps its tags for other recordings`() = runTest {
         file("2026-10-01_09-05-00.m4a")
         file("2026-10-02_09-05-00.m4a")

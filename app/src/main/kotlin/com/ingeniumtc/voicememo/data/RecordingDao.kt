@@ -35,6 +35,14 @@ interface RecordingDao {
     @Query("SELECT * FROM tags WHERE key = :key")
     suspend fun tagWithKey(key: String): TagEntity?
 
+    /** Throws SQLiteConstraintException if another tag already has [key]. */
+    @Query("UPDATE tags SET name = :name, `key` = :key WHERE id = :id")
+    suspend fun renameTag(id: Long, name: String, key: String)
+
+    /** Its links go with it (cascade); recordings stay. */
+    @Query("DELETE FROM tags WHERE id = :id")
+    suspend fun deleteTag(id: Long)
+
     @Query("SELECT * FROM recording_tags")
     fun observeRecordingTags(): Flow<List<RecordingTagEntity>>
 

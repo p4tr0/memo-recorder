@@ -112,6 +112,22 @@ class RecordingRepository(
         if (id != -1L) Tag(id, name) else dao.tagWithKey(key)!!.let { Tag(it.id, it.name) }
     }
 
+    /**
+     * Renames [tag] to [name] (validated). Returns false if another tag already has that name ignoring case.
+     * Renaming to a different case of its own name ("work" to "Work") is allowed.
+     */
+    suspend fun renameTag(tag: Tag, name: String): Boolean = withContext(ioDispatcher + NonCancellable) {
+        try {
+            dao.renameTag(tag.id, name, TagNames.key(name))
+            true
+        } catch (e: SQLiteConstraintException) {
+            false
+        }
+    }
+
+    /** Removes the tag from every recording. No recording is deleted. */
+    suspend fun deleteTag(tag: Tag) = withContext(ioDispatcher + NonCancellable) { dao.deleteTag(tag.id) }
+
     suspend fun setTagged(recording: Recording, tag: Tag, tagged: Boolean) = setTagged(recording.id, tag.id, tagged)
 
     /** Tags a file by name. Its row must exist (sync first), or this is a logged no-op. */

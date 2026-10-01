@@ -13,6 +13,9 @@ object TagNames {
         data object Blank : Result
 
         data object TooLong : Result
+
+        /** Another tag already has this name, ignoring case. Only from renaming: adding reuses the existing tag. */
+        data object Taken : Result
     }
 
     /**

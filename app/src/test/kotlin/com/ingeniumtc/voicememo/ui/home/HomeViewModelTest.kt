@@ -239,6 +239,43 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `renaming a tag refuses blank names and names other tags have`() = runTest(dispatcher) {
+        syncTwoRecordings()
+        val work = repository.createTag("Work")
+        repository.createTag("Ideas")
+        val vm = viewModel()
+        backgroundScope.launch { vm.library.collect {} }
+        vm.awaitLibrary { it.tags.size == 2 }
+
+        assertEquals(TagNames.Result.Blank, vm.renameTag(work, "  "))
+        assertEquals(TagNames.Result.Taken, vm.renameTag(work, "IDEAS"))
+        assertEquals(null, vm.renameTag(work, "Office"))
+        assertEquals(
+            listOf("Office", "Ideas"),
+            vm.awaitLibrary {
+                "Office" in it.tags.map { t -> t.name }
+            }.tags.map { it.name }
+        )
+    }
+
+    @Test
+    fun `deleting the selected tag falls back to All and keeps the recordings`() = runTest(dispatcher) {
+        val (tagged, _) = syncTwoRecordings()
+        val work = repository.createTag("Work")
+        repository.setTagged(tagged, work, tagged = true)
+        val vm = viewModel()
+        backgroundScope.launch { vm.library.collect {} }
+        vm.selectTag(work)
+        vm.awaitLibrary { it.selectedTag == work }
+
+        vm.deleteTag(work)
+
+        val library = vm.awaitLibrary { it.tags.isEmpty() && it.selectedTag == null }
+        assertEquals(2, library.recordings.size)
+        withContext(Dispatchers.Default) { withTimeout(5_000) { tagSelection.savedFlow.first { it == null } } }
+    }
+
+    @Test
     fun `adding a tag from a recording tags it without changing the filter`() = runTest(dispatcher) {
         val (first, _) = syncTwoRecordings()
         val vm = viewModel()

@@ -148,6 +148,37 @@ class HomeViewModel(
         viewModelScope.launch { repository.setTagged(recording, repository.createTag(name), tagged = true) }
     }
 
+    private val _renameFailures = Channel<TagNames.Result>(Channel.BUFFERED)
+
+    /** A rename refused by the database (name taken) after it passed validation. */
+    val renameFailures: Flow<TagNames.Result> = _renameFailures.receiveAsFlow()
+
+    /**
+     * Returns why the name was refused (blank, too long, taken by another tag), or null if it was submitted. If a
+     * tag with that name was created a moment ago in another way, the database refuses it and [renameFailures]
+     * says so.
+     */
+    fun renameTag(tag: Tag, input: String): TagNames.Result? {
+        val valid = TagNames.validate(input) as? TagNames.Result.Valid ?: return TagNames.validate(input)
+        val key = TagNames.key(valid.name)
+        // Known tags answer this at once, so the dialog can show it; the database still guards the rare race.
+        if (library.value?.tags.orEmpty().any { it.id != tag.id && TagNames.key(it.name) == key }) {
+            return TagNames.Result.Taken
+        }
+        viewModelScope.launch {
+            if (!repository.renameTag(tag, valid.name)) _renameFailures.trySend(TagNames.Result.Taken)
+        }
+        return null
+    }
+
+    /** Recordings keep existing, just without this tag. If it was selected, the list falls back to All. */
+    fun deleteTag(tag: Tag) {
+        viewModelScope.launch {
+            repository.deleteTag(tag)
+            if (selectedTagId.value?.tagId == tag.id) selectTag(null)
+        }
+    }
+
     fun setTagged(recording: Recording, tag: Tag, tagged: Boolean) {
         viewModelScope.launch { repository.setTagged(recording, tag, tagged) }
     }
