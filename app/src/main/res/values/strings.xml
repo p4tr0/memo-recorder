@@ -66,4 +66,20 @@
     <string name="delete_body_unprocessed">“%1$s” will be permanently deleted. This is the unprocessed original, which can be more complete than a processed copy with the same date.</string>
     <!-- Empty state body when the record button sits beside the content (landscape) instead of below it. -->
     <string name="home_empty_body_beside">Tap the record button to record your first memo.</string>
+
+    <!-- Tags -->
+    <string name="tag_all">All</string>
+    <string name="action_add_tag">Add tag</string>
+    <string name="action_add">Add</string>
+    <string name="action_done">Done</string>
+    <string name="action_tags">Tags</string>
+    <string name="add_tag_title">New tag</string>
+    <string name="tag_name_label">Tag name</string>
+    <string name="new_tag_label">New tag</string>
+    <string name="tags_title">Tags for %1$s</string>
+    <string name="tags_none_yet">No tags yet. Type one below to create it.</string>
+    <string name="tag_empty_title">No recordings tagged \u201c%1$s\u201d</string>
+    <string name="tag_empty_body">New recordings made while this tag is selected get it automatically.</string>
+    <string name="tag_error_blank">Enter a name</string>
+    <string name="tag_error_too_long">Use %1$d characters or fewer</string>
 </resources>

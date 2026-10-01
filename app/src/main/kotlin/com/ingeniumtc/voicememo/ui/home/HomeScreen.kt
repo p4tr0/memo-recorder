@@ -76,6 +76,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ingeniumtc.voicememo.R
 import com.ingeniumtc.voicememo.data.Recording
+import com.ingeniumtc.voicememo.data.Tag
+import com.ingeniumtc.voicememo.data.TagNames
 import com.ingeniumtc.voicememo.playback.PlaybackState
 import com.ingeniumtc.voicememo.recording.RecordingState
 import com.ingeniumtc.voicememo.ui.theme.RecordRed
@@ -103,6 +105,15 @@ fun HomeScreen(
     onRename: (Recording, String) -> Unit = { _, _ -> },
     onDelete: (Recording) -> Unit = {},
     onShare: (Recording) -> Unit = {},
+    /** Unfiltered. Empty means there are no recordings at all, as opposed to none with the selected tag. */
+    allRecordings: List<Recording>? = recordings,
+    tags: List<Tag> = emptyList(),
+    /** Null means All. */
+    selectedTag: Tag? = null,
+    onTagSelected: (Tag?) -> Unit = {},
+    onAddTag: (String) -> TagNames.Result? = { null },
+    onSetTagged: (Recording, Tag, Boolean) -> Unit = { _, _, _ -> },
+    onAddTagTo: (Recording, String) -> TagNames.Result? = { _, _ -> null },
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     clock: () -> Long = SystemClock::elapsedRealtime,
     zone: ZoneId = ZoneId.systemDefault()
@@ -119,8 +130,8 @@ fun HomeScreen(
     ) { padding ->
         val content = when {
             active != null -> Content.Recording
-            recordings == null -> Content.Loading
-            recordings.isEmpty() -> Content.Empty
+            recordings == null || allRecordings == null -> Content.Loading
+            allRecordings.isEmpty() -> Content.Empty
             else -> Content.Library
         }
         val center = @Composable { centerModifier: Modifier ->
@@ -138,18 +149,37 @@ fun HomeScreen(
                     Content.Loading -> Unit
 
                     // Recordings is non-null here except for a frame while fading out of the library.
-                    Content.Library -> RecordingList(
-                        recordings = recordings.orEmpty(),
-                        playback = playback,
-                        playbackPositionMs = playbackPositionMs,
-                        onPlayClick = onPlayClick,
-                        onSeek = onSeek,
-                        onRename = onRename,
-                        onDelete = onDelete,
-                        onShare = onShare,
-                        zone = zone,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    Content.Library -> Column(Modifier.fillMaxSize()) {
+                        // Fixed above the list, so the filter stays in reach however far the list is scrolled.
+                        TagBar(
+                            tags = tags,
+                            selectedTag = selectedTag,
+                            onTagSelected = onTagSelected,
+                            onAddTag = onAddTag,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                        val shown = recordings.orEmpty()
+                        if (shown.isEmpty() && selectedTag != null) {
+                            Centered { NoRecordingsTagged(selectedTag) }
+                        } else {
+                            RecordingList(
+                                recordings = shown,
+                                playback = playback,
+                                playbackPositionMs = playbackPositionMs,
+                                onPlayClick = onPlayClick,
+                                onSeek = onSeek,
+                                onRename = onRename,
+                                onDelete = onDelete,
+                                onShare = onShare,
+                                tags = tags,
+                                allRecordings = allRecordings.orEmpty(),
+                                onSetTagged = onSetTagged,
+                                onAddTagTo = onAddTagTo,
+                                zone = zone,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
                 }
             }
         }

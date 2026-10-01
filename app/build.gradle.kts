@@ -37,6 +37,10 @@ android {
         compose = true
     }
 
+    // Lets MigrationTestHelper read the exported schemas in unit tests. Robolectric only sees the app's merged
+    // debug assets (not test assets), so they go in debug builds only, never in release.
+    sourceSets["debug"].assets.srcDir("$projectDir/schemas")
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
         // android.util.Log in plain JVM tests becomes a no-op instead of throwing.
@@ -94,6 +98,7 @@ dependencies {
     testImplementation(libs.roborazzi.junit.rule)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+    testImplementation(libs.room.testing)
 
     androidTestImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)

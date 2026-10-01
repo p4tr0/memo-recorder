@@ -8,6 +8,9 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.ingeniumtc.voicememo.VoiceMemoApp
 import com.ingeniumtc.voicememo.data.Recording
 import com.ingeniumtc.voicememo.data.RecordingRepository
+import com.ingeniumtc.voicememo.data.Tag
+import com.ingeniumtc.voicememo.data.TagNames
+import com.ingeniumtc.voicememo.data.TagSelection
 import com.ingeniumtc.voicememo.playback.MediaControllerPlayback
 import com.ingeniumtc.voicememo.playback.Playback
 import com.ingeniumtc.voicememo.playback.PlaybackState
@@ -18,16 +21,35 @@ import com.ingeniumtc.voicememo.recording.RecordingState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** The library as the Home screen shows it: [recordings] is already filtered by [selectedTag]. */
+data class Library(
+    val tags: List<Tag>,
+    /** Null means All. */
+    val selectedTag: Tag?,
+    val recordings: List<Recording>,
+    /** Every recording, whatever the filter. */
+    val all: List<Recording>
+) {
+    /** True when there are no recordings at all, whatever the filter. */
+    val isEmpty: Boolean get() = all.isEmpty()
+}
+
+/** Wraps the selection so "loaded, All" (tagId null) differs from "not loaded yet" (no Selection). */
+private data class Selection(val tagId: Long?)
+
 class HomeViewModel(
     private val controller: RecordingController,
     private val repository: RecordingRepository,
+    private val tagSelection: TagSelection,
     playbackFactory: (CoroutineScope) -> Playback,
     private val startRecordingService: () -> Boolean
 ) : ViewModel() {
@@ -39,8 +61,30 @@ class HomeViewModel(
     val playbackState: StateFlow<PlaybackState> = playback.state
     val playbackPositionMs: StateFlow<Long> = playback.positionMs
 
-    val recordings: StateFlow<List<Recording>?> =
-        repository.recordings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
+    // Null until the saved choice is read, so the list doesn't flash "All" before switching to the remembered tag.
+    private val selectedTagId = MutableStateFlow<Selection?>(null)
+
+    /** Null while loading. */
+    val library: StateFlow<Library?> =
+        combine(repository.recordings, repository.tags, selectedTagId) { all, tags, selection ->
+            selection ?: return@combine null
+            // A remembered tag that no longer exists falls back to All.
+            val selected = tags.firstOrNull { it.id == selection.tagId }
+            Library(
+                tags = tags,
+                selectedTag = selected,
+                recordings = if (selected == null) all else all.filter { selected.id in it.tagIds },
+                all = all
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
+
+    init {
+        viewModelScope.launch {
+            val remembered = Selection(tagSelection.load())
+            // Unless the user already picked a tag while this was loading: theirs wins.
+            selectedTagId.compareAndSet(null, remembered)
+        }
+    }
 
     // A channel, not a shared flow, so a failure isn't dropped while the screen resubscribes after rotation.
     private val _deleteFailures = Channel<Recording>(Channel.BUFFERED)
@@ -79,6 +123,39 @@ class HomeViewModel(
         }
     }
 
+    /** Null selects All. Remembered for the next launch. */
+    fun selectTag(tag: Tag?) {
+        selectedTagId.value = Selection(tag?.id)
+        viewModelScope.launch { tagSelection.save(tag?.id) }
+    }
+
+    /**
+     * Creates a tag from what the user typed and selects it, or selects the existing tag with that name. Returns
+     * why the name was refused, or null if it was accepted.
+     */
+    fun addTag(input: String): TagNames.Result? = withValidName(input) { name ->
+        viewModelScope.launch { selectTag(repository.createTag(name)) }
+    }
+
+    /** Creates (or reuses) a tag and puts it on [recording], without changing the filter. */
+    fun addTagTo(recording: Recording, input: String): TagNames.Result? = withValidName(input) { name ->
+        viewModelScope.launch { repository.setTagged(recording, repository.createTag(name), tagged = true) }
+    }
+
+    fun setTagged(recording: Recording, tag: Tag, tagged: Boolean) {
+        viewModelScope.launch { repository.setTagged(recording, tag, tagged) }
+    }
+
+    private fun withValidName(input: String, onValid: (String) -> Unit): TagNames.Result? =
+        when (val result = TagNames.validate(input)) {
+            is TagNames.Result.Valid -> {
+                onValid(result.name)
+                null
+            }
+
+            else -> result
+        }
+
     override fun onCleared() {
         playback.release()
     }
@@ -92,6 +169,7 @@ class HomeViewModel(
                 HomeViewModel(
                     controller = app.container.recordingController,
                     repository = app.container.recordingRepository,
+                    tagSelection = app.container.tagSelection,
                     playbackFactory = { scope -> MediaControllerPlayback(app, scope) },
                     startRecordingService = { RecordingService.start(app) }
                 )

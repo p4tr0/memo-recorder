@@ -1,5 +1,6 @@
 package com.ingeniumtc.voicememo.data
 
+import android.database.sqlite.SQLiteConstraintException
 import android.util.Log
 import com.ingeniumtc.voicememo.recording.RecordingStorage
 import java.io.File
@@ -9,6 +10,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -20,7 +22,8 @@ data class Recording(
     val title: String?,
     val createdAt: Instant,
     val durationMs: Long,
-    val sizeBytes: Long
+    val sizeBytes: Long,
+    val tagIds: Set<Long> = emptySet()
 ) {
     val id: String get() = file.name
 
@@ -30,6 +33,8 @@ data class Recording(
      */
     val isRawAac: Boolean get() = file.extension == "aac"
 }
+
+data class Tag(val id: Long, val name: String)
 
 /**
  * The library of finished recordings. Files on disk are the source of truth and Room caches their metadata,
@@ -46,7 +51,13 @@ class RecordingRepository(
     // Serializes sync and delete so a delete can't be undone by a sync that listed the file just before.
     private val mutex = Mutex()
 
-    val recordings: Flow<List<Recording>> = dao.observeAll().map { rows -> rows.map { it.toRecording() } }
+    val recordings: Flow<List<Recording>> =
+        combine(dao.observeAll(), dao.observeRecordingTags()) { rows, links ->
+            val tagsByFile = links.groupBy({ it.fileName }, { it.tagId })
+            rows.map { it.toRecording(tagsByFile[it.fileName].orEmpty().toSet()) }
+        }
+
+    val tags: Flow<List<Tag>> = dao.observeTags().map { rows -> rows.map { Tag(it.id, it.name) } }
 
     /** Adds rows for files without one and drops rows whose file is gone. */
     suspend fun sync() = withContext(ioDispatcher) {
@@ -91,15 +102,50 @@ class RecordingRepository(
         }
     }
 
+    /**
+     * Creates a tag, or returns the existing one if the name is already taken ignoring case. [name] must already
+     * be trimmed and validated ([TagNames.validate]).
+     */
+    suspend fun createTag(name: String): Tag = withContext(ioDispatcher + NonCancellable) {
+        val id = dao.insertTag(TagEntity(name = name))
+        if (id != -1L) Tag(id, name) else dao.tagNamed(name)!!.let { Tag(it.id, it.name) }
+    }
+
+    suspend fun setTagged(recording: Recording, tag: Tag, tagged: Boolean) = setTagged(recording.id, tag.id, tagged)
+
+    /**
+     * Tags a just-saved recording. Its row is added by a sync that may still be running, so this syncs first:
+     * the link needs the row to exist.
+     */
+    suspend fun tagNewRecording(fileName: String, tagId: Long) {
+        sync()
+        setTagged(fileName, tagId, tagged = true)
+    }
+
+    private suspend fun setTagged(fileName: String, tagId: Long, tagged: Boolean) =
+        withContext(ioDispatcher + NonCancellable) {
+            try {
+                if (tagged) {
+                    dao.addRecordingTag(RecordingTagEntity(fileName, tagId))
+                } else {
+                    dao.removeRecordingTag(fileName, tagId)
+                }
+            } catch (e: SQLiteConstraintException) {
+                // The recording or tag was deleted a moment ago. Nothing left to tag.
+                Log.w(TAG, "Could not tag $fileName", e)
+            }
+        }
+
     private fun createdAt(file: File): Long =
         storage.startedAt(file)?.atZone(zone())?.toInstant()?.toEpochMilli() ?: file.lastModified()
 
-    private fun RecordingEntity.toRecording() = Recording(
+    private fun RecordingEntity.toRecording(tagIds: Set<Long>) = Recording(
         file = storage.fileNamed(fileName),
         title = title,
         createdAt = Instant.ofEpochMilli(createdAt),
         durationMs = durationMs,
-        sizeBytes = sizeBytes
+        sizeBytes = sizeBytes,
+        tagIds = tagIds
     )
 
     private companion object {

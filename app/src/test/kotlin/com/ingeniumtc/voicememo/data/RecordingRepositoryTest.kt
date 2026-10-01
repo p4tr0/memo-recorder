@@ -182,5 +182,66 @@ class RecordingRepositoryTest {
         assertEquals(listOf(false, true), recordings.sortedBy { it.id.endsWith(".aac") }.map { it.isRawAac })
     }
 
+    @Test
+    fun `tag names are unique ignoring case, and re-adding returns the existing tag`() = runTest {
+        val work = repository.createTag("Work")
+        assertEquals(work, repository.createTag("work"))
+        assertEquals(listOf("Work"), repository.tags.first().map { it.name })
+    }
+
+    @Test
+    fun `tags are listed in the order they were created`() = runTest {
+        repository.createTag("Zebra")
+        repository.createTag("Apple")
+        assertEquals(listOf("Zebra", "Apple"), repository.tags.first().map { it.name })
+    }
+
+    @Test
+    fun `tagging and untagging a recording`() = runTest {
+        file("2026-10-01_09-05-00.m4a")
+        repository.sync()
+        val recording = repository.recordings.first().single()
+        val work = repository.createTag("Work")
+
+        repository.setTagged(recording, work, tagged = true)
+        repository.setTagged(recording, work, tagged = true) // Idempotent.
+        assertEquals(setOf(work.id), repository.recordings.first().single().tagIds)
+
+        repository.setTagged(recording, work, tagged = false)
+        assertTrue(repository.recordings.first().single().tagIds.isEmpty())
+    }
+
+    @Test
+    fun `a recording whose file disappears takes its tag links with it, and the tag stays`() = runTest {
+        val audio = file("2026-10-01_09-05-00.m4a")
+        repository.sync()
+        val work = repository.createTag("Work")
+        repository.setTagged(repository.recordings.first().single(), work, tagged = true)
+
+        assertTrue(audio.delete())
+        repository.sync()
+        // Recreating a file with the same name must not resurrect the old tags.
+        file("2026-10-01_09-05-00.m4a")
+        repository.sync()
+
+        assertTrue(repository.recordings.first().single().tagIds.isEmpty())
+        assertEquals(listOf(work), repository.tags.first())
+    }
+
+    @Test
+    fun `a new recording can be tagged before the library has synced it`() = runTest {
+        val work = repository.createTag("Work")
+        file("2026-10-01_09-05-00.m4a")
+        repository.tagNewRecording("2026-10-01_09-05-00.m4a", work.id)
+        assertEquals(setOf(work.id), repository.recordings.first().single().tagIds)
+    }
+
+    @Test
+    fun `tagging a recording that is gone is ignored rather than crashing`() = runTest {
+        val work = repository.createTag("Work")
+        repository.tagNewRecording("never-existed.m4a", work.id)
+        assertTrue(repository.recordings.first().isEmpty())
+    }
+
     private fun file(name: String): File = File(dir, name).apply { writeText(FAKE_AUDIO) }
 }

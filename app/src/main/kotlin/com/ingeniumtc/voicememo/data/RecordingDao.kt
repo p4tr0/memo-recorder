@@ -24,6 +24,27 @@ interface RecordingDao {
     @Query("UPDATE recordings SET title = :title WHERE fileName = :fileName")
     suspend fun setTitle(fileName: String, title: String?)
 
+    // Tags are listed in the order they were created, so a new one appears next to "Add tag".
+    @Query("SELECT * FROM tags ORDER BY id")
+    fun observeTags(): Flow<List<TagEntity>>
+
+    /** Returns the new id, or -1 if a tag with that name (ignoring case) already exists. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertTag(tag: TagEntity): Long
+
+    /** Case-insensitive, through the column's NOCASE collation. */
+    @Query("SELECT * FROM tags WHERE name = :name")
+    suspend fun tagNamed(name: String): TagEntity?
+
+    @Query("SELECT * FROM recording_tags")
+    fun observeRecordingTags(): Flow<List<RecordingTagEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun addRecordingTag(link: RecordingTagEntity)
+
+    @Query("DELETE FROM recording_tags WHERE fileName = :fileName AND tagId = :tagId")
+    suspend fun removeRecordingTag(fileName: String, tagId: Long)
+
     @Transaction
     suspend fun reconcile(add: List<RecordingEntity>, remove: List<String>) {
         if (remove.isNotEmpty()) deleteAll(remove)

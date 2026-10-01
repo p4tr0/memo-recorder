@@ -71,6 +71,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ingeniumtc.voicememo.R
 import com.ingeniumtc.voicememo.data.Recording
+import com.ingeniumtc.voicememo.data.Tag
+import com.ingeniumtc.voicememo.data.TagNames
 import com.ingeniumtc.voicememo.playback.PlaybackState
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -88,9 +90,15 @@ internal fun RecordingList(
     onDelete: (Recording) -> Unit,
     onShare: (Recording) -> Unit,
     modifier: Modifier = Modifier,
+    tags: List<Tag> = emptyList(),
+    /** Unfiltered, so the tags dialog stays open when unticking the tag the list is filtered by. */
+    allRecordings: List<Recording> = recordings,
+    onSetTagged: (Recording, Tag, Boolean) -> Unit = { _, _, _ -> },
+    onAddTagTo: (Recording, String) -> TagNames.Result? = { _, _ -> null },
     zone: ZoneId = ZoneId.systemDefault()
 ) {
     var renaming by rememberSaveable { mutableStateOf<String?>(null) }
+    var tagging by rememberSaveable { mutableStateOf<String?>(null) }
     var deleting by rememberSaveable { mutableStateOf<String?>(null) }
 
     val listState = rememberLazyListState()
@@ -136,6 +144,7 @@ internal fun RecordingList(
                 onPlayClick = { onPlayClick(recording, title) },
                 onSeek = onSeek,
                 onRenameClick = { renaming = recording.id },
+                onTagsClick = { tagging = recording.id },
                 onShareClick = { onShare(recording) },
                 onDeleteClick = { deleting = recording.id },
                 modifier = Modifier.animateItem()
@@ -152,6 +161,16 @@ internal fun RecordingList(
                 onRename(recording, it)
                 renaming = null
             }
+        )
+    }
+    allRecordings.firstOrNull { it.id == tagging }?.let { recording ->
+        RecordingTagsDialog(
+            recording = recording,
+            title = displayTitle(recording, zone),
+            tags = tags,
+            onToggle = { tag, tagged -> onSetTagged(recording, tag, tagged) },
+            onAddTag = { onAddTagTo(recording, it) },
+            onDismiss = { tagging = null }
         )
     }
     recordings.firstOrNull { it.id == deleting }?.let { recording ->
@@ -177,6 +196,7 @@ private fun RecordingRow(
     onPlayClick: () -> Unit,
     onSeek: (Long) -> Unit,
     onRenameClick: () -> Unit,
+    onTagsClick: () -> Unit,
     onShareClick: () -> Unit,
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -259,7 +279,7 @@ private fun RecordingRow(
                         )
                     }
                 }
-                OverflowMenu(spokenName, onRenameClick, onShareClick, onDeleteClick)
+                OverflowMenu(spokenName, onRenameClick, onTagsClick, onShareClick, onDeleteClick)
             }
         }
         AnimatedVisibility(
@@ -328,7 +348,13 @@ private fun SeekBar(positionMs: () -> Long, durationMs: Long, onSeek: (Long) -> 
 }
 
 @Composable
-private fun OverflowMenu(title: String, onRename: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit) {
+private fun OverflowMenu(
+    title: String,
+    onRename: () -> Unit,
+    onTags: () -> Unit,
+    onShare: () -> Unit,
+    onDelete: () -> Unit
+) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
@@ -343,6 +369,13 @@ private fun OverflowMenu(title: String, onRename: () -> Unit, onShare: () -> Uni
                 onClick = {
                     expanded = false
                     onRename()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.action_tags)) },
+                onClick = {
+                    expanded = false
+                    onTags()
                 }
             )
             DropdownMenuItem(

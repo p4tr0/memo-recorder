@@ -39,7 +39,7 @@ import kotlinx.coroutines.launch
 fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory)) {
     val recordingState by viewModel.recordingState.collectAsStateWithLifecycle()
     val amplitude = viewModel.amplitude.collectAsStateWithLifecycle()
-    val recordings by viewModel.recordings.collectAsStateWithLifecycle()
+    val library by viewModel.library.collectAsStateWithLifecycle()
     val playback by viewModel.playbackState.collectAsStateWithLifecycle()
     // Read only inside the seek bar, like amplitude, so ticks don't recompose the screen.
     val playbackPosition = viewModel.playbackPositionMs.collectAsStateWithLifecycle()
@@ -101,7 +101,14 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
 
     HomeScreen(
         recordingState = recordingState,
-        recordings = recordings,
+        recordings = library?.recordings,
+        allRecordings = library?.all,
+        tags = library?.tags.orEmpty(),
+        selectedTag = library?.selectedTag,
+        onTagSelected = viewModel::selectTag,
+        onAddTag = viewModel::addTag,
+        onSetTagged = viewModel::setTagged,
+        onAddTagTo = viewModel::addTagTo,
         playback = playback,
         playbackPositionMs = { playbackPosition.value },
         onPlayClick = viewModel::togglePlayback,
