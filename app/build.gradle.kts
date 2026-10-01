@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.ingeniumtc.voicememo"
+    namespace = "io.github.p4tr0.voicememo"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.ingeniumtc.voicememo"
+        applicationId = "io.github.p4tr0.voicememo"
         minSdk = 26
         targetSdk = 37
         versionCode = 4

@@ -32,7 +32,7 @@ The Gradle daemon runs on JDK 21, which Gradle provisions itself (`gradle/gradle
 ## Layout
 
 ```
-app/src/main/kotlin/com/ingeniumtc/voicememo/
+app/src/main/kotlin/io/github/p4tr0/voicememo/
   MainActivity.kt
   ui/theme/          Color.kt, Theme.kt (RecordRed stays fixed under dynamic color)
   ui/<feature>/      one package per screen: Screen composable, ViewModel, UI state
