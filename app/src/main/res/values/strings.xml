@@ -29,6 +29,25 @@
     <string name="action_stop">Stop</string>
     <string name="action_settings">Settings</string>
 
+    <string name="action_play">Play %1$s</string>
+    <string name="action_pause_playback">Pause %1$s</string>
+    <string name="action_more">More options for %1$s</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_share">Share</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="seek_position">Playback position</string>
+
+    <string name="rename_title">Rename recording</string>
+    <string name="rename_label">Name</string>
+    <string name="rename_hint">Leave empty to show the date</string>
+    <string name="delete_title">Delete recording?</string>
+    <string name="delete_body">\u201c%1$s\u201d will be permanently deleted.</string>
+    <string name="share_chooser_title">Share recording</string>
+    <!-- Subtitle of a renamed recording: its date, then its length. -->
+    <string name="recording_subtitle">%1$s \u00b7 %2$s</string>
+
     <string name="notification_channel_recording">Recording</string>
 
     <string name="message_saved">Saved %1$s recording</string>
@@ -36,5 +55,57 @@
     <string name="message_could_not_start">Couldn\'t start recording. The microphone may be in use by another app.</string>
     <string name="message_too_short">Recording was too short to save</string>
     <string name="message_recorder_error">Recording failed and couldn\'t be saved</string>
+    <string name="message_delete_failed">Couldn\'t delete %1$s</string>
     <string name="message_save_failed">Recording kept but not fully saved yet. It will be finished automatically.</string>
+    <!-- Spoken by TalkBack for the seek bar, e.g. "0:42 of 3:15". -->
+    <string name="seek_state">%1$s of %2$s</string>
+    <!-- Tag on a kept raw .aac recording. It can sit next to a processed copy with the same date; this one is complete. -->
+    <string name="label_unprocessed">Unprocessed</string>
+    <!-- How TalkBack names a raw recording in its row and buttons, e.g. "Play Oct 1, 9:05 AM, unprocessed original". -->
+    <string name="recording_name_unprocessed">%1$s, unprocessed original</string>
+    <string name="delete_body_unprocessed">“%1$s” will be permanently deleted. This is the unprocessed original, which can be more complete than a processed copy with the same date.</string>
+    <!-- Empty state body when the record button sits beside the content (landscape) instead of below it. -->
+    <string name="home_empty_body_beside">Tap the record button to record your first memo.</string>
+
+    <!-- Tags -->
+    <string name="tag_all">All</string>
+    <string name="action_add_tag">Add tag</string>
+    <string name="action_add">Add</string>
+    <string name="action_done">Done</string>
+    <string name="action_tags">Tag</string>
+    <string name="add_tag_title">New tag</string>
+    <string name="tag_name_label">Tag name</string>
+    <string name="new_tag_label">New tag</string>
+    <string name="tags_title">Tag for %1$s</string>
+    <string name="tags_none_yet">No tags yet. Type one below to create it.</string>
+    <string name="tag_empty_title">No recordings tagged \u201c%1$s\u201d</string>
+    <string name="tag_empty_body">New recordings made while this tag is selected get it automatically.</string>
+    <string name="tag_error_blank">Enter a name</string>
+    <plurals name="tag_error_too_long">
+        <item quantity="one">Use %1$d character or fewer</item>
+        <item quantity="other">Use %1$d characters or fewer</item>
+    </plurals>
+    <string name="tag_error_taken">A tag with this name already exists</string>
+    <!-- TalkBack's long-press action on a tag chip, e.g. "Rename or delete Work". -->
+    <string name="action_tag_options">Rename or delete %1$s</string>
+    <string name="rename_tag_title">Rename tag</string>
+    <string name="delete_tag_title">Delete tag \u201c%1$s\u201d?</string>
+    <string name="delete_tag_body">Recordings keep their audio and stay in All; they just lose this tag.</string>
+    <string name="message_rename_tag_taken">Couldn\'t rename: a tag with that name was just added</string>
+    <string name="tag_none">No tag</string>
+    <!-- Read by TalkBack with a recording, since its tag is otherwise shown only by color. -->
+    <string name="tag_state">Tagged %1$s</string>
+    <!-- Shown after recordings are shared into the app; joined into one line, e.g. "Imported 3 recordings. 1 was already here." -->
+    <plurals name="message_imported">
+        <item quantity="one">Imported %1$d recording.</item>
+        <item quantity="other">Imported %1$d recordings.</item>
+    </plurals>
+    <plurals name="message_import_duplicates">
+        <item quantity="one">%1$d was already here.</item>
+        <item quantity="other">%1$d were already here.</item>
+    </plurals>
+    <plurals name="message_import_failed">
+        <item quantity="one">%1$d couldn\'t be imported.</item>
+        <item quantity="other">%1$d couldn\'t be imported.</item>
+    </plurals>
 </resources>

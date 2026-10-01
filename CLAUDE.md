@@ -6,8 +6,8 @@ A simple, fast, stylish voice recorder and player for Android. **Personal use, s
 
 - Kotlin 2.4 with AGP 9 built-in Kotlin (there is no `org.jetbrains.kotlin.android` plugin; that's intentional), Jetpack Compose, Material 3
 - Recording: `MediaRecorder` streaming ADTS AAC to `<name>.aac.part`, inside a foreground service (`foregroundServiceType="microphone"`). On stop it's losslessly remuxed to `.m4a` with `MediaMuxer`. ADTS stays playable if the process is killed, and interrupted `.part` files are recovered at launch. **Never delete captured audio**: the `.m4a` is fsynced and checked to account for every ADTS byte before the source goes, otherwise the raw `.aac` is kept. Only files smaller than one frame are discarded.
-- Playback: Media3 ExoPlayer + `MediaSessionService`
-- Storage: audio in app-private `filesDir`, metadata in Room (KSP)
+- Playback: Media3 ExoPlayer + `MediaSessionService`, driven by a `MediaController`. The session's player is wrapped in `RecordingGuardPlayer`, which refuses to play while recording (media buttons and system controls bypass the UI).
+- Storage: audio in app-private `filesDir/recordings`, metadata in Room (KSP). **Files are the source of truth**: `RecordingRepository.sync()` adds rows for new `.m4a`/`.aac` files and drops rows whose file is gone, after every save and at launch. Only user-confirmed delete removes audio. Titles live only in Room, so never use a destructive migration.
 - Single `:app` module, MVVM with `StateFlow`, manual DI (no Hilt unless the graph gets painful)
 - minSdk 26, compileSdk/targetSdk 37. compileSdk 37 is required by current AndroidX releases.
 - All versions live in `gradle/libs.versions.toml`. Use stable releases only.
@@ -32,13 +32,13 @@ The Gradle daemon runs on JDK 21, which Gradle provisions itself (`gradle/gradle
 ## Layout
 
 ```
-app/src/main/kotlin/com/ingeniumtc/voicememo/
+app/src/main/kotlin/io/github/p4tr0/voicememo/
   MainActivity.kt
   ui/theme/          Color.kt, Theme.kt (RecordRed stays fixed under dynamic color)
   ui/<feature>/      one package per screen: Screen composable, ViewModel, UI state
   recording/         controller, MediaRecorder wrapper, ADTS to m4a remuxer, storage, foreground service
-  playback/          player + media session service (planned)
-  data/              Room DB, DAO, repository (planned)
+  playback/          media session service, MediaController wrapper, recording guard
+  data/              Room DB, DAO, repository that syncs rows with files
 app/src/test/        Robolectric + Roborazzi tests; goldens in app/src/test/screenshots/
 app/src/androidTest/ instrumented tests on real MediaExtractor/MediaMuxer (ADTS fixture in assets/)
 ```
@@ -63,7 +63,8 @@ app/src/androidTest/ instrumented tests on real MediaExtractor/MediaMuxer (ADTS 
 - **Don't run Gradle builds on Android Studio's JBR 17.0.6.** It has an aarch64 C1 JIT bug ("Field too big for insn") that crashes the daemon during lint. The daemon JVM pin to 21 prevents this. Keep it.
 - **Robolectric needs Java 21** for SDK 35+ sandboxes. The test task uses a Gradle-provisioned JDK 21 toolchain (foojay resolver) plus `--add-opens`/`--add-exports` JVM args. Don't remove them.
 - **`mipmap-anydpi-v26` must stay versioned.** AAPT auto-versions `<adaptive-icon>` into `-v26` during merging, so an unversioned folder breaks the build. `app/lint.xml` suppresses the resulting ObsoleteSdkInt warning.
-- **Release builds are signed with the debug key** on purpose, because the app is sideloaded. A release APK installs over a debug install.
+- **Release builds are signed with a release key kept outside the repo**: `~/.android/voicememo-release.p12`, with its path and password in `~/.gradle/gradle.properties` (`VOICEMEMO_KEYSTORE`, `VOICEMEMO_KEYSTORE_PASSWORD`, `VOICEMEMO_KEY_ALIAS`). Never commit either. Every update must be signed with it or Android refuses to install over the existing app, so the user keeps a backup. Without it, release packaging fails on purpose (`checkReleaseKey`). Debug builds still use the debug key, so a release APK does not install over a debug install (or vice versa) without uninstalling.
+- **The user's phone has several profiles.** Install only into Private: `adb install -r --user 20 <apk>`. Plain `adb install` puts the app in every profile.
 - **Robolectric can't test media.** Its `MediaExtractor`/`MediaMuxer` aren't representative, so remux behavior is tested in `androidTest`. Unit tests use `FakeRemuxer`, which must fail like the real one (an empty input throws a plain `IOException`, not `NoAudioException`).
 - **The real extractor stops silently at a corrupt ADTS frame** and reports a normal end of stream. That's why storage checks byte counts before deleting the source.
 - **`MPEG4Writer: Stop() called but track is not started or stopped`** in logcat is framework noise from `MediaMuxer.release()`, not a bug in our code.
