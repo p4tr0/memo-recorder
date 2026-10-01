@@ -5,7 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import com.ingeniumtc.voicememo.ui.home.HomeScreen
+import com.ingeniumtc.voicememo.ui.home.HomeRoute
 import com.ingeniumtc.voicememo.ui.theme.VoiceMemoTheme
 
 class MainActivity : ComponentActivity() {
@@ -15,7 +15,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             VoiceMemoTheme {
-                HomeScreen()
+                HomeRoute()
             }
         }
     }
