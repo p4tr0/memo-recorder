@@ -5,7 +5,7 @@ A simple, fast, stylish voice recorder and player for Android. **Personal use, s
 ## Stack
 
 - Kotlin 2.4 with AGP 9 built-in Kotlin (there is no `org.jetbrains.kotlin.android` plugin; that's intentional), Jetpack Compose, Material 3
-- Recording: `MediaRecorder` producing AAC in `.m4a`, inside a foreground service (`foregroundServiceType="microphone"`)
+- Recording: `MediaRecorder` streaming ADTS AAC to `<name>.aac.part`, inside a foreground service (`foregroundServiceType="microphone"`). On stop it's losslessly remuxed to `.m4a` with `MediaMuxer`. ADTS stays playable if the process is killed, and interrupted `.part` files are recovered at launch. **Never delete captured audio**: the `.m4a` is fsynced and checked to account for every ADTS byte before the source goes, otherwise the raw `.aac` is kept. Only files smaller than one frame are discarded.
 - Playback: Media3 ExoPlayer + `MediaSessionService`
 - Storage: audio in app-private `filesDir`, metadata in Room (KSP)
 - Single `:app` module, MVVM with `StateFlow`, manual DI (no Hilt unless the graph gets painful)
@@ -24,6 +24,7 @@ The Gradle daemon runs on JDK 21, which Gradle provisions itself (`gradle/gradle
 | Format | `./gradlew spotlessApply` (the hook runs this automatically) |
 | Lint | `./gradlew lintDebug` (warnings are errors) |
 | Unit + screenshot tests | `./gradlew testDebugUnitTest` |
+| Instrumented tests (needs a device or emulator) | `./gradlew connectedDebugAndroidTest` |
 | Record screenshot goldens | `./gradlew recordRoborazziDebug` |
 | Verify screenshots | `./gradlew verifyRoborazziDebug` |
 | Release APK | `./gradlew assembleRelease` (see the `release` skill) |
@@ -35,10 +36,11 @@ app/src/main/kotlin/com/ingeniumtc/voicememo/
   MainActivity.kt
   ui/theme/          Color.kt, Theme.kt (RecordRed stays fixed under dynamic color)
   ui/<feature>/      one package per screen: Screen composable, ViewModel, UI state
-  recording/         recorder + foreground service (planned)
+  recording/         controller, MediaRecorder wrapper, ADTS to m4a remuxer, storage, foreground service
   playback/          player + media session service (planned)
   data/              Room DB, DAO, repository (planned)
 app/src/test/        Robolectric + Roborazzi tests; goldens in app/src/test/screenshots/
+app/src/androidTest/ instrumented tests on real MediaExtractor/MediaMuxer (ADTS fixture in assets/)
 ```
 
 ## Conventions
@@ -62,4 +64,8 @@ app/src/test/        Robolectric + Roborazzi tests; goldens in app/src/test/scre
 - **Robolectric needs Java 21** for SDK 35+ sandboxes. The test task uses a Gradle-provisioned JDK 21 toolchain (foojay resolver) plus `--add-opens`/`--add-exports` JVM args. Don't remove them.
 - **`mipmap-anydpi-v26` must stay versioned.** AAPT auto-versions `<adaptive-icon>` into `-v26` during merging, so an unversioned folder breaks the build. `app/lint.xml` suppresses the resulting ObsoleteSdkInt warning.
 - **Release builds are signed with the debug key** on purpose, because the app is sideloaded. A release APK installs over a debug install.
+- **Robolectric can't test media.** Its `MediaExtractor`/`MediaMuxer` aren't representative, so remux behavior is tested in `androidTest`. Unit tests use `FakeRemuxer`, which must fail like the real one (an empty input throws a plain `IOException`, not `NoAudioException`).
+- **The real extractor stops silently at a corrupt ADTS frame** and reports a normal end of stream. That's why storage checks byte counts before deleting the source.
+- **`MPEG4Writer: Stop() called but track is not started or stopped`** in logcat is framework noise from `MediaMuxer.release()`, not a bug in our code.
+- **Emulator:** the SDK has no cmdline-tools (`avdmanager`), so the `voicememo_api34` AVD (API 34 google_apis arm64) was written by hand in `~/.android/avd/`. Boot it headless with `~/Library/Android/sdk/emulator/emulator -avd voicememo_api34 -no-window -no-snapshot`. `connectedDebugAndroidTest` uninstalls the app afterwards, which wipes its recordings.
 - Android Studio on this machine is an old version (2022.3 "Giraffe") and can't sync AGP 9 projects. The command-line build works. Update Studio before opening the project in the IDE.
