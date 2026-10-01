@@ -93,4 +93,6 @@
     <string name="delete_tag_body">Recordings keep their audio and stay in All; they just lose this tag.</string>
     <string name="message_rename_tag_taken">Couldn\'t rename: a tag with that name was just added</string>
     <string name="tag_none">No tag</string>
+    <!-- Read by TalkBack with a recording, since its tag is otherwise shown only by color. -->
+    <string name="tag_state">Tagged %1$s</string>
 </resources>

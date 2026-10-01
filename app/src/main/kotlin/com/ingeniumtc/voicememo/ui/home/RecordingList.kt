@@ -143,6 +143,7 @@ internal fun RecordingList(
             RecordingRow(
                 recording = recording,
                 tagColor = tag?.let { tagColor(it.hue) },
+                tagName = tag?.name,
                 title = title,
                 subtitle = subtitle(recording, zone),
                 playback = playback.takeIf { it.currentId == recording.id },
@@ -197,6 +198,8 @@ private fun RecordingRow(
     recording: Recording,
     /** Its tag's color, drawn as a stripe on the start edge, or null when untagged. */
     tagColor: Color?,
+    /** Spoken with the row, since the stripe alone is color-only information. */
+    tagName: String?,
     title: String,
     subtitle: String,
     playback: PlaybackState?,
@@ -211,6 +214,7 @@ private fun RecordingRow(
 ) {
     val playing = playback?.isPlaying == true
     val current = playback != null
+    val tagLabel = tagName?.let { stringResource(R.string.tag_state, it) }
     // A raw copy can share its date (and so its default title) with a processed one; its buttons must say which.
     val spokenName = if (recording.isRawAac) stringResource(R.string.recording_name_unprocessed, title) else title
     val playLabel =
@@ -277,7 +281,7 @@ private fun RecordingRow(
                 Column(
                     Modifier
                         .weight(1f)
-                        .semantics(mergeDescendants = true) {}
+                        .semantics(mergeDescendants = true) { tagLabel?.let { stateDescription = it } }
                 ) {
                     Text(
                         text = title,
