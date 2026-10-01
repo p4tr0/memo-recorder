@@ -27,7 +27,7 @@ class RecordingControllerTest {
     private fun TestScope.controller(configure: FakeRecorder.() -> Unit = {}): Pair<RecordingController, File> {
         val dir = tmp.newFolder("recordings")
         val controller = RecordingController(
-            storage = RecordingStorage(dir),
+            storage = RecordingStorage(dir, FakeRemuxer()),
             recorderFactory = { FakeRecorder().apply(configure).also { recorders += it } },
             scope = backgroundScope,
             dispatcher = StandardTestDispatcher(testScheduler),
@@ -47,7 +47,7 @@ class RecordingControllerTest {
                 RecordingState.Active(isPaused = false, accumulatedMs = 0, resumedAt = 1_000),
                 controller.state.value
             )
-            assertTrue(File(dir, "2026-10-01_11-30-05.m4a.part").exists())
+            assertTrue(File(dir, "2026-10-01_11-30-05.aac.part").exists())
 
             nowMs += 4_200
             controller.stop()
@@ -57,7 +57,7 @@ class RecordingControllerTest {
             assertEquals("2026-10-01_11-30-05.m4a", saved.file.name)
             assertEquals(4_200, saved.durationMs)
             assertTrue(saved.file.exists())
-            assertFalse(File(dir, "2026-10-01_11-30-05.m4a.part").exists())
+            assertFalse(File(dir, "2026-10-01_11-30-05.aac.part").exists())
         }
         assertEquals(RecordingState.Idle, controller.state.value)
         assertTrue(recorders.single().released)
@@ -110,7 +110,10 @@ class RecordingControllerTest {
 
     @Test
     fun `stop with no captured audio discards the file`() = runTest {
-        val (controller, dir) = controller { failOnStop = true }
+        val (controller, dir) = controller {
+            failOnStop = true
+            writesAudio = false
+        }
         controller.events.test {
             controller.start()
             runCurrent()
@@ -136,14 +139,31 @@ class RecordingControllerTest {
     }
 
     @Test
-    fun `recorder error that corrupts the file reports RecorderError`() = runTest {
-        val (controller, _) = controller { failOnStop = true }
+    fun `recorder error before any audio reports RecorderError`() = runTest {
+        val (controller, _) = controller {
+            failOnStop = true
+            writesAudio = false
+        }
         controller.events.test {
             controller.start()
             runCurrent()
             recorders.single().onError?.invoke()
             runCurrent()
             assertEquals(RecordingEvent.Failed(RecordingEvent.Reason.RecorderError), awaitItem())
+        }
+    }
+
+    @Test
+    fun `audio captured before a failed stop is still saved`() = runTest {
+        val (controller, _) = controller { failOnStop = true }
+        controller.events.test {
+            controller.start()
+            runCurrent()
+            nowMs += 30_000
+            recorders.single().onError?.invoke()
+            runCurrent()
+            val saved = awaitItem() as RecordingEvent.Saved
+            assertEquals("2026-10-01_11-30-05.m4a", saved.file.name)
         }
     }
 
@@ -201,13 +221,15 @@ class RecordingControllerTest {
     }
 
     @Test
-    fun `abandoned partial files are cleaned up but finished recordings are kept`() = runTest {
+    fun `interrupted recordings are recovered and junk is cleaned up`() = runTest {
         val (controller, dir) = controller()
-        File(dir, "old.m4a.part").writeText("x")
+        File(dir, "cut-off.aac.part").writeText("audio")
+        File(dir, "empty.aac.part").createNewFile()
+        File(dir, "half-written.m4a.tmp").writeText("x")
         File(dir, "kept.m4a").writeText("x")
-        controller.deleteAbandonedRecordings()
+        controller.recoverInterruptedRecordings()
         runCurrent()
-        assertEquals(listOf("kept.m4a"), dir.list()!!.toList())
+        assertEquals(listOf("cut-off.m4a", "kept.m4a"), dir.list()!!.sorted())
     }
 
     @Test
@@ -219,6 +241,7 @@ class RecordingControllerTest {
     }
 
     private class FakeRecorder : AudioRecorder {
+        var writesAudio = true
         var failOnStart = false
         var failOnStop = false
         var failOnPause = false
@@ -232,7 +255,8 @@ class RecordingControllerTest {
 
         override fun start(output: File) {
             if (failOnStart) throw IllegalStateException("mic busy")
-            output.writeText("audio") // MediaRecorder creates the file on start.
+            // MediaRecorder creates the file on start and streams frames into it.
+            if (writesAudio) output.writeText("audio") else output.createNewFile()
             calls += "start"
         }
 

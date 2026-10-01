@@ -5,7 +5,10 @@ import android.media.MediaRecorder
 import android.os.Build
 import java.io.File
 
-/** AAC in an MPEG-4 container: small files, hardware-encoded, plays everywhere. */
+/**
+ * Hardware AAC in an ADTS stream. Unlike MPEG-4, ADTS needs no index written on stop, so audio survives
+ * the process being killed. [RecordingStorage] remuxes it to .m4a after a clean stop.
+ */
 internal class MediaRecorderAudioRecorder(private val context: Context) : AudioRecorder {
     private var recorder: MediaRecorder? = null
 
@@ -20,7 +23,7 @@ internal class MediaRecorderAudioRecorder(private val context: Context) : AudioR
         }
         recorder = r
         r.setAudioSource(MediaRecorder.AudioSource.MIC)
-        r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+        r.setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS)
         r.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
         r.setAudioChannels(1)
         r.setAudioSamplingRate(SAMPLE_RATE_HZ)

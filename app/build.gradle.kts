@@ -37,6 +37,8 @@ android {
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
+        // android.util.Log in plain JVM tests becomes a no-op instead of throwing.
+        unitTests.isReturnDefaultValues = true
     }
 
     lint {

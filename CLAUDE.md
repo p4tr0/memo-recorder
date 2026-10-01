@@ -5,7 +5,7 @@ A simple, fast, stylish voice recorder and player for Android. **Personal use, s
 ## Stack
 
 - Kotlin 2.4 with AGP 9 built-in Kotlin (there is no `org.jetbrains.kotlin.android` plugin; that's intentional), Jetpack Compose, Material 3
-- Recording: `MediaRecorder` producing AAC in `.m4a`, inside a foreground service (`foregroundServiceType="microphone"`)
+- Recording: `MediaRecorder` streaming ADTS AAC to `<name>.aac.part`, inside a foreground service (`foregroundServiceType="microphone"`). On stop it's losslessly remuxed to `.m4a` with `MediaMuxer`. ADTS stays playable if the process is killed, and interrupted `.part` files are recovered at launch. **Never delete captured audio**: if a remux fails, the raw `.aac` is kept.
 - Playback: Media3 ExoPlayer + `MediaSessionService`
 - Storage: audio in app-private `filesDir`, metadata in Room (KSP)
 - Single `:app` module, MVVM with `StateFlow`, manual DI (no Hilt unless the graph gets painful)

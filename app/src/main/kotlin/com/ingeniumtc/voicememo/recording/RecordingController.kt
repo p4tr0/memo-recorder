@@ -1,6 +1,7 @@
 package com.ingeniumtc.voicememo.recording
 
 import android.os.SystemClock
+import android.util.Log
 import java.io.File
 import java.time.LocalDateTime
 import kotlin.math.log10
@@ -96,11 +97,13 @@ class RecordingController(
     fun stop() = command { finish(failureReason = RecordingEvent.Reason.TooShort) }
 
     /**
-     * Deletes `.part` files left by a killed process. Runs on the recorder dispatcher, so it is ordered
+     * Finishes recordings cut off by process death. Runs on the recorder dispatcher, so it is ordered
      * before any [start] issued after it and can never touch a live recording.
      */
-    fun deleteAbandonedRecordings() = command {
-        if (_state.value == RecordingState.Idle) storage.deleteAbandonedPartials()
+    fun recoverInterruptedRecordings() = command {
+        if (_state.value != RecordingState.Idle) return@command
+        val recovered = storage.recoverInterrupted()
+        if (recovered.isNotEmpty()) Log.i(TAG, "Recovered ${recovered.size} interrupted recording(s)")
     }
 
     /** For failures outside the recorder, such as the system refusing to start the foreground service. */
@@ -123,17 +126,20 @@ class RecordingController(
         recorder = null
         partialFile = null
         _amplitude.value = 0f
-        _state.value = RecordingState.Idle
 
-        val event = if (stopped) {
-            runCatching { storage.commit(partial) }
-                .map { RecordingEvent.Saved(it, duration) }
-                .getOrElse { RecordingEvent.Failed(RecordingEvent.Reason.RecorderError) }
-        } else {
-            storage.discard(partial)
-            RecordingEvent.Failed(failureReason)
-        }
-        _events.tryEmit(event)
+        // Even when stop() failed, ADTS frames written before the failure are playable, so try to keep them.
+        // Saving happens before going Idle so the foreground service keeps the process alive meanwhile.
+        val saved = runCatching { storage.commit(partial) }
+            .onFailure { Log.e(TAG, "Could not save ${partial.name}", it) }
+            .getOrNull()
+        _state.value = RecordingState.Idle
+        _events.tryEmit(
+            when {
+                saved != null -> RecordingEvent.Saved(saved, duration)
+                stopped -> RecordingEvent.Failed(RecordingEvent.Reason.TooShort)
+                else -> RecordingEvent.Failed(failureReason)
+            }
+        )
     }
 
     private fun startMeter(r: AudioRecorder) {
@@ -156,6 +162,7 @@ class RecordingController(
     }
 
     internal companion object {
+        private const val TAG = "RecordingController"
         const val METER_INTERVAL_MS = 50L
         private const val PEAK_DECAY = 0.8f
         private const val FLOOR_DB = -50f

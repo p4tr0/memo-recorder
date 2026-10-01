@@ -2,6 +2,7 @@ package com.ingeniumtc.voicememo
 
 import android.content.Context
 import android.util.Log
+import com.ingeniumtc.voicememo.recording.MediaMuxerRemuxer
 import com.ingeniumtc.voicememo.recording.MediaRecorderAudioRecorder
 import com.ingeniumtc.voicememo.recording.RecordingController
 import com.ingeniumtc.voicememo.recording.RecordingStorage
@@ -19,7 +20,7 @@ class AppContainer(context: Context) {
         SupervisorJob() + CoroutineExceptionHandler { _, e -> Log.e("VoiceMemo", "Uncaught in appScope", e) }
     )
 
-    val recordingStorage = RecordingStorage(File(appContext.filesDir, "recordings"))
+    val recordingStorage = RecordingStorage(File(appContext.filesDir, "recordings"), MediaMuxerRemuxer())
 
     val recordingController = RecordingController(
         storage = recordingStorage,
