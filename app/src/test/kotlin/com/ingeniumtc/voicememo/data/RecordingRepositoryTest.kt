@@ -203,12 +203,12 @@ class RecordingRepositoryTest {
         val recording = repository.recordings.first().single()
         val work = repository.createTag("Work")
 
-        repository.setTagged(recording, work, tagged = true)
-        repository.setTagged(recording, work, tagged = true) // Idempotent.
-        assertEquals(setOf(work.id), repository.recordings.first().single().tagIds)
+        repository.setTag(recording, work)
+        repository.setTag(recording, work) // Idempotent.
+        assertEquals(work.id, repository.recordings.first().single().tagId)
 
-        repository.setTagged(recording, work, tagged = false)
-        assertTrue(repository.recordings.first().single().tagIds.isEmpty())
+        repository.setTag(recording, null)
+        assertTrue(repository.recordings.first().single().tagId == null)
     }
 
     @Test
@@ -216,7 +216,7 @@ class RecordingRepositoryTest {
         val audio = file("2026-10-01_09-05-00.m4a")
         repository.sync()
         val work = repository.createTag("Work")
-        repository.setTagged(repository.recordings.first().single(), work, tagged = true)
+        repository.setTag(repository.recordings.first().single(), work)
 
         assertTrue(audio.delete())
         repository.sync()
@@ -224,7 +224,7 @@ class RecordingRepositoryTest {
         file("2026-10-01_09-05-00.m4a")
         repository.sync()
 
-        assertTrue(repository.recordings.first().single().tagIds.isEmpty())
+        assertTrue(repository.recordings.first().single().tagId == null)
         assertEquals(listOf(work), repository.tags.first())
     }
 
@@ -249,14 +249,14 @@ class RecordingRepositoryTest {
         repository.sync()
         val work = repository.createTag("work")
         repository.createTag("Ideas")
-        repository.setTagged(repository.recordings.first().single(), work, tagged = true)
+        repository.setTag(repository.recordings.first().single(), work)
 
         assertTrue(repository.renameTag(work, "Work")) // A different case of its own name is fine.
         assertFalse(repository.renameTag(work, "ideas"))
         assertTrue(repository.renameTag(work, "Office"))
 
         assertEquals(listOf("Office", "Ideas"), repository.tags.first().map { it.name })
-        assertEquals(setOf(work.id), repository.recordings.first().single().tagIds)
+        assertEquals(work.id, repository.recordings.first().single().tagId)
         // The old name is free again: this makes a new tag rather than returning Office.
         assertTrue(repository.createTag("work").id != work.id)
     }
@@ -266,14 +266,45 @@ class RecordingRepositoryTest {
         val audio = file("2026-10-01_09-05-00.m4a")
         repository.sync()
         val work = repository.createTag("Work")
-        repository.setTagged(repository.recordings.first().single(), work, tagged = true)
+        repository.setTag(repository.recordings.first().single(), work)
 
         repository.deleteTag(work)
 
         assertTrue(repository.tags.first().isEmpty())
         val recording = repository.recordings.first().single()
-        assertTrue(recording.tagIds.isEmpty())
+        assertTrue(recording.tagId == null)
         assertTrue(audio.exists())
+    }
+
+    @Test
+    fun `a recording carries one tag, so setting another replaces it, and null clears it`() = runTest {
+        file("2026-10-01_09-05-00.m4a")
+        repository.sync()
+        val recording = repository.recordings.first().single()
+        val work = repository.createTag("Work")
+        val ideas = repository.createTag("Ideas")
+
+        repository.setTag(recording, work)
+        repository.setTag(recording, ideas)
+        assertEquals(ideas.id, repository.recordings.first().single().tagId)
+
+        repository.setTag(recording, null)
+        assertNull(repository.recordings.first().single().tagId)
+    }
+
+    @Test
+    fun `each new tag's hue is far from the previous tag's`() = runTest {
+        val hues = (1..40).map { repository.createTag("Tag $it").hue }
+        hues.zipWithNext().forEach { (previous, next) ->
+            assertTrue("$previous then $next", TagHues.distance(previous, next) >= TagHues.MIN_DISTANCE)
+        }
+        assertEquals(hues, repository.tags.first().map { it.hue })
+    }
+
+    @Test
+    fun `re-adding an existing tag keeps its color`() = runTest {
+        val work = repository.createTag("Work")
+        assertEquals(work.hue, repository.createTag("WORK").hue)
     }
 
     @Test
@@ -282,12 +313,12 @@ class RecordingRepositoryTest {
         file("2026-10-02_09-05-00.m4a")
         repository.sync()
         val work = repository.createTag("Work")
-        repository.recordings.first().forEach { repository.setTagged(it, work, tagged = true) }
+        repository.recordings.first().forEach { repository.setTag(it, work) }
 
         repository.delete(repository.recordings.first().first())
 
         assertEquals(listOf(work), repository.tags.first())
-        assertEquals(setOf(work.id), repository.recordings.first().single().tagIds)
+        assertEquals(work.id, repository.recordings.first().single().tagId)
     }
 
     private fun file(name: String): File = File(dir, name).apply { writeText(FAKE_AUDIO) }

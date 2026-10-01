@@ -76,7 +76,7 @@ class HomeViewModel(
             Library(
                 tags = tags,
                 selectedTag = selected,
-                recordings = if (selected == null) all else all.filter { selected.id in it.tagIds },
+                recordings = if (selected == null) all else all.filter { it.tagId == selected.id },
                 all = all
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
@@ -143,9 +143,9 @@ class HomeViewModel(
         viewModelScope.launch { selectTag(repository.createTag(name)) }
     }
 
-    /** Creates (or reuses) a tag and puts it on [recording], without changing the filter. */
+    /** Creates (or reuses) a tag and makes it [recording]'s tag, replacing any other, without changing the filter. */
     fun addTagTo(recording: Recording, input: String): TagNames.Result? = withValidName(input) { name ->
-        viewModelScope.launch { repository.setTagged(recording, repository.createTag(name), tagged = true) }
+        viewModelScope.launch { repository.setTag(recording, repository.createTag(name)) }
     }
 
     private val _renameFailures = Channel<TagNames.Result>(Channel.BUFFERED)
@@ -179,8 +179,9 @@ class HomeViewModel(
         }
     }
 
-    fun setTagged(recording: Recording, tag: Tag, tagged: Boolean) {
-        viewModelScope.launch { repository.setTagged(recording, tag, tagged) }
+    /** A recording carries one tag: this replaces any other. Null removes it. */
+    fun setTag(recording: Recording, tag: Tag?) {
+        viewModelScope.launch { repository.setTag(recording, tag) }
     }
 
     private fun withValidName(input: String, onValid: (String) -> Unit): TagNames.Result? =

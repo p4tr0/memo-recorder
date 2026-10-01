@@ -6,6 +6,7 @@ import com.ingeniumtc.voicememo.recording.RecordingStorage
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
+import kotlin.random.Random
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -23,7 +24,8 @@ data class Recording(
     val createdAt: Instant,
     val durationMs: Long,
     val sizeBytes: Long,
-    val tagIds: Set<Long> = emptySet()
+    /** The recording's one tag, or null. */
+    val tagId: Long? = null
 ) {
     val id: String get() = file.name
 
@@ -34,7 +36,8 @@ data class Recording(
     val isRawAac: Boolean get() = file.extension == "aac"
 }
 
-data class Tag(val id: Long, val name: String)
+/** [hue] is 0 until 359; the UI picks lightness and saturation per theme. */
+data class Tag(val id: Long, val name: String, val hue: Int = 0)
 
 /**
  * The library of finished recordings. Files on disk are the source of truth and Room caches their metadata,
@@ -46,18 +49,20 @@ class RecordingRepository(
     /** Duration in ms, read from the file. Can be slow (it opens the file), so only called for new files. */
     private val readDurationMs: (File) -> Long,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val zone: () -> ZoneId = ZoneId::systemDefault
+    private val zone: () -> ZoneId = ZoneId::systemDefault,
+    private val random: Random = Random.Default
 ) {
     // Serializes sync and delete so a delete can't be undone by a sync that listed the file just before.
     private val mutex = Mutex()
+    private val tagMutex = Mutex()
 
     val recordings: Flow<List<Recording>> =
         combine(dao.observeAll(), dao.observeRecordingTags()) { rows, links ->
-            val tagsByFile = links.groupBy({ it.fileName }, { it.tagId })
-            rows.map { it.toRecording(tagsByFile[it.fileName].orEmpty().toSet()) }
+            val tagByFile = links.associate { it.fileName to it.tagId }
+            rows.map { it.toRecording(tagByFile[it.fileName]) }
         }
 
-    val tags: Flow<List<Tag>> = dao.observeTags().map { rows -> rows.map { Tag(it.id, it.name) } }
+    val tags: Flow<List<Tag>> = dao.observeTags().map { rows -> rows.map { it.toTag() } }
 
     /** Adds rows for files without one and drops rows whose file is gone. */
     suspend fun sync() = withContext(ioDispatcher) {
@@ -107,9 +112,14 @@ class RecordingRepository(
      * be trimmed and validated ([TagNames.validate]).
      */
     suspend fun createTag(name: String): Tag = withContext(ioDispatcher + NonCancellable) {
-        val key = TagNames.key(name)
-        val id = dao.insertTag(TagEntity(name = name, key = key))
-        if (id != -1L) Tag(id, name) else dao.tagWithKey(key)!!.let { Tag(it.id, it.name) }
+        // Serialized so two quick creates don't both pick their hue against the same previous tag.
+        tagMutex.withLock {
+            val key = TagNames.key(name)
+            dao.tagWithKey(key)?.let { return@withLock it.toTag() }
+            val hue = TagHues.pick(previous = dao.newestTag()?.hue, random = random)
+            val id = dao.insertTag(TagEntity(name = name, key = key, hue = hue))
+            if (id != -1L) Tag(id, name, hue) else dao.tagWithKey(key)!!.toTag()
+        }
     }
 
     /**
@@ -128,35 +138,37 @@ class RecordingRepository(
     /** Removes the tag from every recording. No recording is deleted. */
     suspend fun deleteTag(tag: Tag) = withContext(ioDispatcher + NonCancellable) { dao.deleteTag(tag.id) }
 
-    suspend fun setTagged(recording: Recording, tag: Tag, tagged: Boolean) = setTagged(recording.id, tag.id, tagged)
+    /** Gives [recording] the tag [tag], replacing any other, or clears it when [tag] is null. */
+    suspend fun setTag(recording: Recording, tag: Tag?) = setTag(recording.id, tag?.id)
 
-    /** Tags a file by name. Its row must exist (sync first), or this is a logged no-op. */
-    suspend fun tagFile(fileName: String, tagId: Long) = setTagged(fileName, tagId, tagged = true)
+    /** Tags a file by name, replacing any tag it had. Its row must exist (sync first), or this is a logged no-op. */
+    suspend fun tagFile(fileName: String, tagId: Long) = setTag(fileName, tagId)
 
-    private suspend fun setTagged(fileName: String, tagId: Long, tagged: Boolean) =
-        withContext(ioDispatcher + NonCancellable) {
-            try {
-                if (tagged) {
-                    dao.addRecordingTag(RecordingTagEntity(fileName, tagId))
-                } else {
-                    dao.removeRecordingTag(fileName, tagId)
-                }
-            } catch (e: SQLiteConstraintException) {
-                // The recording or tag was deleted a moment ago. Nothing left to tag.
-                Log.w(TAG, "Could not tag $fileName", e)
+    private suspend fun setTag(fileName: String, tagId: Long?) = withContext(ioDispatcher + NonCancellable) {
+        try {
+            if (tagId != null) {
+                dao.setRecordingTag(RecordingTagEntity(fileName, tagId))
+            } else {
+                dao.clearRecordingTag(fileName)
             }
+        } catch (e: SQLiteConstraintException) {
+            // The recording or tag was deleted a moment ago. Nothing left to tag.
+            Log.w(TAG, "Could not tag $fileName", e)
         }
+    }
 
     private fun createdAt(file: File): Long =
         storage.startedAt(file)?.atZone(zone())?.toInstant()?.toEpochMilli() ?: file.lastModified()
 
-    private fun RecordingEntity.toRecording(tagIds: Set<Long>) = Recording(
+    private fun TagEntity.toTag() = Tag(id, name, hue)
+
+    private fun RecordingEntity.toRecording(tagId: Long?) = Recording(
         file = storage.fileNamed(fileName),
         title = title,
         createdAt = Instant.ofEpochMilli(createdAt),
         durationMs = durationMs,
         sizeBytes = sizeBytes,
-        tagIds = tagIds
+        tagId = tagId
     )
 
     private companion object {

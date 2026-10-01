@@ -143,11 +143,11 @@ class HomeViewModelTest {
     fun `filters by the selected tag, and All shows everything`() = runTest(dispatcher) {
         val (tagged, untagged) = syncTwoRecordings()
         val work = repository.createTag("Work")
-        repository.setTagged(tagged, work, tagged = true)
+        repository.setTag(tagged, work)
         val vm = viewModel()
         backgroundScope.launch { vm.library.collect {} }
 
-        val all = vm.awaitLibrary { work.id in it.all.single { r -> r.id == tagged.id }.tagIds }
+        val all = vm.awaitLibrary { it.all.single { r -> r.id == tagged.id }.tagId == work.id }
         assertEquals(listOf(untagged.id, tagged.id), all.recordings.map { it.id })
         vm.selectTag(work)
         val filtered = vm.awaitLibrary { it.selectedTag == work }
@@ -262,7 +262,7 @@ class HomeViewModelTest {
     fun `deleting the selected tag falls back to All and keeps the recordings`() = runTest(dispatcher) {
         val (tagged, _) = syncTwoRecordings()
         val work = repository.createTag("Work")
-        repository.setTagged(tagged, work, tagged = true)
+        repository.setTag(tagged, work)
         val vm = viewModel()
         backgroundScope.launch { vm.library.collect {} }
         vm.selectTag(work)
@@ -282,9 +282,9 @@ class HomeViewModelTest {
         backgroundScope.launch { vm.library.collect {} }
 
         assertEquals(null, vm.addTagTo(first, "Work"))
-        val library = vm.awaitLibrary { l -> l.all.single { it.id == first.id }.tagIds.isNotEmpty() }
+        val library = vm.awaitLibrary { l -> l.all.single { it.id == first.id }.tagId != null }
         val work = library.tags.single()
-        assertEquals(setOf(work.id), library.all.single { it.id == first.id }.tagIds)
+        assertEquals(work.id, library.all.single { it.id == first.id }.tagId)
         assertEquals(null, library.selectedTag)
     }
 

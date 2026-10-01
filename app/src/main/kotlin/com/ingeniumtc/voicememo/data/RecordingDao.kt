@@ -46,11 +46,15 @@ interface RecordingDao {
     @Query("SELECT * FROM recording_tags")
     fun observeRecordingTags(): Flow<List<RecordingTagEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun addRecordingTag(link: RecordingTagEntity)
+    /** Replaces the recording's tag. Safe here: nothing references recording_tags, so REPLACE can't cascade. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun setRecordingTag(link: RecordingTagEntity)
 
-    @Query("DELETE FROM recording_tags WHERE fileName = :fileName AND tagId = :tagId")
-    suspend fun removeRecordingTag(fileName: String, tagId: Long)
+    @Query("DELETE FROM recording_tags WHERE fileName = :fileName")
+    suspend fun clearRecordingTag(fileName: String)
+
+    @Query("SELECT * FROM tags ORDER BY id DESC LIMIT 1")
+    suspend fun newestTag(): TagEntity?
 
     @Transaction
     suspend fun reconcile(add: List<RecordingEntity>, remove: List<String>) {

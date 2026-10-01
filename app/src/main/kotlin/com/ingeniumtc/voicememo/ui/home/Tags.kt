@@ -6,6 +6,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -22,8 +24,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -32,13 +35,13 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -82,6 +85,7 @@ import com.ingeniumtc.voicememo.R
 import com.ingeniumtc.voicememo.data.Recording
 import com.ingeniumtc.voicememo.data.Tag
 import com.ingeniumtc.voicememo.data.TagNames
+import com.ingeniumtc.voicememo.ui.theme.tagColor
 import kotlinx.coroutines.flow.first
 
 /**
@@ -155,6 +159,7 @@ internal fun TagBar(
             Box {
                 TagChip(
                     label = tag.name,
+                    dot = tagColor(tag.hue),
                     selected = tag.id == selectedTag?.id,
                     onClick = { onTagSelected(tag) },
                     onLongClick = {
@@ -243,6 +248,8 @@ private fun TagChip(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The tag's color, so the chip can be matched to the stripes on its recordings. */
+    dot: Color? = null,
     onLongClick: (() -> Unit)? = null,
     onLongClickLabel: String? = null
 ) {
@@ -280,16 +287,29 @@ private fun TagChip(
             .padding(horizontal = 16.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            color = content,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            // A 30-character name stays a chip, not most of the row.
-            modifier = Modifier.widthIn(max = TAG_CHIP_MAX_WIDTH)
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (dot != null) TagDot(dot)
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                color = content,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                // A 30-character name stays a chip, not most of the row.
+                modifier = Modifier.widthIn(max = TAG_CHIP_MAX_WIDTH)
+            )
+        }
     }
+}
+
+@Composable
+private fun TagDot(color: Color, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(TAG_DOT_SIZE)
+            .clip(CircleShape)
+            .background(color)
+    )
 }
 
 /**
@@ -344,13 +364,16 @@ internal fun NoRecordingsTagged(tag: Tag, modifier: Modifier = Modifier) {
     }
 }
 
-/** Checkboxes for every tag on one recording, plus a field to create a new tag and put it on the recording. */
+/**
+ * Picks the one tag for a recording ("No tag" or one of them), plus a field to create a new tag and give it to
+ * the recording. A recording carries a single tag, so picking one replaces the other.
+ */
 @Composable
 internal fun RecordingTagsDialog(
     recording: Recording,
     title: String,
     tags: List<Tag>,
-    onToggle: (Tag, Boolean) -> Unit,
+    onSelect: (Tag?) -> Unit,
     onAddTag: (String) -> TagNames.Result?,
     onDismiss: () -> Unit
 ) {
@@ -373,32 +396,22 @@ internal fun RecordingTagsDialog(
                     )
                 } else {
                     // Five and a half rows, so a cut-off row shows there are more to scroll to.
-                    LazyColumn(Modifier.heightIn(max = TAG_LIST_MAX_HEIGHT)) {
+                    LazyColumn(Modifier.heightIn(max = TAG_LIST_MAX_HEIGHT).selectableGroup()) {
+                        item(key = "none") {
+                            TagOption(
+                                label = stringResource(R.string.tag_none),
+                                dot = null,
+                                selected = recording.tagId == null,
+                                onClick = { onSelect(null) }
+                            )
+                        }
                         items(tags, key = { it.id }) { tag ->
-                            val checked = tag.id in recording.tagIds
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = TAG_ROW_HEIGHT)
-                                    .toggleable(
-                                        value = checked,
-                                        role = Role.Checkbox,
-                                        onValueChange = { onToggle(tag, it) }
-                                    ),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // The row is the toggle, so the checkbox itself takes no clicks or focus.
-                                Checkbox(checked = checked, onCheckedChange = null)
-                                // Options to pick, so full-strength text rather than the dialog's dimmer body color.
-                                Text(
-                                    tag.name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.padding(start = 16.dp),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                            TagOption(
+                                label = tag.name,
+                                dot = tagColor(tag.hue),
+                                selected = tag.id == recording.tagId,
+                                onClick = { onSelect(tag) }
+                            )
                         }
                     }
                 }
@@ -431,6 +444,36 @@ internal fun RecordingTagsDialog(
 }
 
 /** Add or rename. [initial] is selected in full, so typing replaces it. */
+@Composable
+private fun TagOption(label: String, dot: Color?, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = TAG_ROW_HEIGHT)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // The row is the control, so the radio button itself takes no clicks or focus.
+        RadioButton(selected = selected, onClick = null)
+        Row(
+            Modifier.padding(start = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // "No tag" gets an empty slot, so every name lines up.
+            if (dot != null) TagDot(dot) else Spacer(Modifier.size(TAG_DOT_SIZE))
+            // Options to pick, so full-strength text rather than the dialog's dimmer body color.
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
 @Composable
 private fun TagNameDialog(
     title: String,
@@ -511,5 +554,6 @@ private val CHIP_HEIGHT = 32.dp
 private val CHIP_SHAPE = RoundedCornerShape(8.dp)
 private val TAG_ROW_HEIGHT = 48.dp
 private val TAG_LIST_MAX_HEIGHT = TAG_ROW_HEIGHT * 5.5f
+private val TAG_DOT_SIZE = 8.dp
 private val TAG_CHIP_MAX_WIDTH = 200.dp
 private val TAG_EDGE_FADE = 24.dp

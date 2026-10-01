@@ -113,7 +113,7 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
         selectedTag = library?.selectedTag,
         onTagSelected = viewModel::selectTag,
         onAddTag = viewModel::addTag,
-        onSetTagged = viewModel::setTagged,
+        onSetTag = viewModel::setTag,
         onAddTagTo = viewModel::addTagTo,
         onRenameTag = viewModel::renameTag,
         onDeleteTag = viewModel::deleteTag,

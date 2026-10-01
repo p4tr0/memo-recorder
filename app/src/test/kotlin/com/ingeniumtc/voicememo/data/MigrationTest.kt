@@ -43,6 +43,7 @@ class MigrationTest {
 
         // Open through Room itself, so the auto-migration it generated is the one exercised.
         val room = Room.databaseBuilder(ApplicationProvider.getApplicationContext(), VoiceMemoDatabase::class.java, DB)
+            .addMigrations(MIGRATION_2_3)
             .allowMainThreadQueries()
             .build()
         try {
@@ -51,6 +52,40 @@ class MigrationTest {
             assertTrue(room.recordings().observeTags().first().isEmpty())
         } finally {
             room.close()
+        }
+    }
+
+    @Test
+    fun `2 to 3 keeps titles, gives tags spread colors, and keeps a recording's oldest tag`() = runTest {
+        helper.createDatabase(DB, 2).use { db ->
+            db.execSQL(
+                "INSERT INTO recordings (fileName, title, createdAt, durationMs, sizeBytes) VALUES " +
+                    "('a.m4a', 'Standup', 1000, 4200, 512), ('b.m4a', NULL, 2000, 1000, 128)"
+            )
+            db.execSQL("INSERT INTO tags (id, name, `key`) VALUES (1, 'Work', 'work'), (2, 'Ideas', 'ideas')")
+            // a.m4a had two tags in v2; b.m4a had none.
+            db.execSQL("INSERT INTO recording_tags (fileName, tagId) VALUES ('a.m4a', 2), ('a.m4a', 1)")
+        }
+        helper.runMigrationsAndValidate(DB, 3, true, MIGRATION_2_3).use { db ->
+            db.query("SELECT fileName, tagId FROM recording_tags").use { c ->
+                assertEquals(1, c.count)
+                c.moveToFirst()
+                assertEquals("a.m4a", c.getString(0))
+                assertEquals(1L, c.getLong(1))
+            }
+            db.query("SELECT hue FROM tags ORDER BY id").use { c ->
+                val hues = buildList { while (c.moveToNext()) add(c.getInt(0)) }
+                assertEquals(listOf(137, 274), hues)
+            }
+            db.query("SELECT title FROM recordings WHERE fileName = 'a.m4a'").use { c ->
+                c.moveToFirst()
+                assertEquals("Standup", c.getString(0))
+            }
+            // The new primary key allows one tag per recording.
+            db.execSQL("PRAGMA foreign_keys = ON")
+            assertTrue(
+                runCatching { db.execSQL("INSERT INTO recording_tags (fileName, tagId) VALUES ('a.m4a', 2)") }.isFailure
+            )
         }
     }
 

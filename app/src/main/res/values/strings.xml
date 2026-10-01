@@ -72,11 +72,11 @@
     <string name="action_add_tag">Add tag</string>
     <string name="action_add">Add</string>
     <string name="action_done">Done</string>
-    <string name="action_tags">Tags</string>
+    <string name="action_tags">Tag</string>
     <string name="add_tag_title">New tag</string>
     <string name="tag_name_label">Tag name</string>
     <string name="new_tag_label">New tag</string>
-    <string name="tags_title">Tags for %1$s</string>
+    <string name="tags_title">Tag for %1$s</string>
     <string name="tags_none_yet">No tags yet. Type one below to create it.</string>
     <string name="tag_empty_title">No recordings tagged \u201c%1$s\u201d</string>
     <string name="tag_empty_body">New recordings made while this tag is selected get it automatically.</string>
@@ -92,4 +92,5 @@
     <string name="delete_tag_title">Delete tag \u201c%1$s\u201d?</string>
     <string name="delete_tag_body">Recordings keep their audio and stay in All; they just lose this tag.</string>
     <string name="message_rename_tag_taken">Couldn\'t rename: a tag with that name was just added</string>
+    <string name="tag_none">No tag</string>
 </resources>

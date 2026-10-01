@@ -75,12 +75,7 @@ class AutoTaggerTest {
         save("2026-10-01_09-05-00")
         tagger.filesChanged()
 
-        assertEquals(
-            setOf(work.id),
-            awaitRecordings {
-                it.singleOrNull()?.tagIds?.isNotEmpty() == true
-            }.single().tagIds
-        )
+        assertEquals(work.id, awaitRecordings { it.singleOrNull()?.tagId != null }.single().tagId)
         assertNull(prefs.pending)
     }
 
@@ -94,7 +89,7 @@ class AutoTaggerTest {
         advanceUntilIdle()
         assertNull(prefs.pending)
         repository.sync()
-        assertTrue(repository.recordings.first().single().tagIds.isEmpty())
+        assertTrue(repository.recordings.first().single().tagId == null)
     }
 
     @Test
@@ -106,8 +101,8 @@ class AutoTaggerTest {
         File(dir, "2026-10-01_09-05-00.aac.part").renameTo(File(dir, "2026-10-01_09-05-00.aac"))
         File(dir, "2026-10-01_09-05-00.m4a").writeText(FAKE_AUDIO)
         tagger.filesChanged()
-        val tagged = awaitRecordings { all -> all.size == 2 && all.all { it.tagIds.isNotEmpty() } }
-        assertEquals(listOf(setOf(work.id), setOf(work.id)), tagged.map { it.tagIds })
+        val tagged = awaitRecordings { all -> all.size == 2 && all.all { it.tagId != null } }
+        assertEquals(listOf(work.id, work.id), tagged.map { it.tagId })
     }
 
     @Test
@@ -122,12 +117,7 @@ class AutoTaggerTest {
         storage.recoverInterrupted()
         nextLaunch.filesChanged()
 
-        assertEquals(
-            setOf(work.id),
-            awaitRecordings {
-                it.singleOrNull()?.tagIds?.isNotEmpty() == true
-            }.single().tagIds
-        )
+        assertEquals(work.id, awaitRecordings { it.singleOrNull()?.tagId != null }.single().tagId)
     }
 
     @Test
@@ -159,8 +149,8 @@ class AutoTaggerTest {
         tagger.sessionStarted(partial("2026-10-02_09-05-00"))
         save("2026-10-02_09-05-00")
         tagger.filesChanged()
-        val tagged = awaitRecordings { all -> all.any { it.id.startsWith("2026-10-02") && it.tagIds.isNotEmpty() } }
-        assertEquals(setOf(work.id), tagged.single { it.id.startsWith("2026-10-02") }.tagIds)
+        val tagged = awaitRecordings { all -> all.any { it.id.startsWith("2026-10-02") && it.tagId != null } }
+        assertEquals(work.id, tagged.single { it.id.startsWith("2026-10-02") }.tagId)
     }
 
     /** Room works on its own threads, so results are awaited in real time rather than with the test scheduler. */

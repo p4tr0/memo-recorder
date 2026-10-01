@@ -112,7 +112,7 @@ fun HomeScreen(
     selectedTag: Tag? = null,
     onTagSelected: (Tag?) -> Unit = {},
     onAddTag: (String) -> TagNames.Result? = { null },
-    onSetTagged: (Recording, Tag, Boolean) -> Unit = { _, _, _ -> },
+    onSetTag: (Recording, Tag?) -> Unit = { _, _ -> },
     onAddTagTo: (Recording, String) -> TagNames.Result? = { _, _ -> null },
     /** Returns the error to show in the rename dialog, or null once the rename is submitted. */
     onRenameTag: (Tag, String) -> TagNames.Result? = { _, _ -> null },
@@ -178,7 +178,7 @@ fun HomeScreen(
                                 onShare = onShare,
                                 tags = tags,
                                 allRecordings = allRecordings.orEmpty(),
-                                onSetTagged = onSetTagged,
+                                onSetTag = onSetTag,
                                 onAddTagTo = onAddTagTo,
                                 zone = zone,
                                 modifier = Modifier.fillMaxSize()

@@ -13,15 +13,17 @@ import androidx.room.RoomDatabase
  */
 @Database(
     entities = [RecordingEntity::class, TagEntity::class, RecordingTagEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2)] // 2: tags.
+    autoMigrations = [AutoMigration(from = 1, to = 2)] // 2: tags. 3 is hand-written: MIGRATION_2_3.
 )
 abstract class VoiceMemoDatabase : RoomDatabase() {
     abstract fun recordings(): RecordingDao
 
     companion object {
         fun create(context: Context): VoiceMemoDatabase =
-            Room.databaseBuilder(context.applicationContext, VoiceMemoDatabase::class.java, "voicememo.db").build()
+            Room.databaseBuilder(context.applicationContext, VoiceMemoDatabase::class.java, "voicememo.db")
+                .addMigrations(MIGRATION_2_3)
+                .build()
     }
 }

@@ -281,18 +281,18 @@ class HomeScreenScreenshotTest {
 
     @Test
     fun recordingTagsDialogLight() =
-        captureTags("home_recording_tags_dialog_light", darkTheme = false, open = MENU + "Tags")
+        captureTags("home_recording_tags_dialog_light", darkTheme = false, open = MENU + "Tag")
 
     @Test
     fun recordingTagsDialogDark() =
-        captureTags("home_recording_tags_dialog_dark", darkTheme = true, open = MENU + "Tags")
+        captureTags("home_recording_tags_dialog_dark", darkTheme = true, open = MENU + "Tag")
 
     @Test
     fun recordingTagsDialogManyLight() = captureTags(
         "home_recording_tags_dialog_many_light",
         darkTheme = false,
         tags = MANY_TAGS,
-        open = MENU + "Tags"
+        open = MENU + "Tag"
     )
 
     @Test
@@ -301,7 +301,7 @@ class HomeScreenScreenshotTest {
         darkTheme = false,
         tags = emptyList(),
         open =
-            MENU + "Tags"
+            MENU + "Tag"
     )
 
     @Test
@@ -310,7 +310,7 @@ class HomeScreenScreenshotTest {
         darkTheme = true,
         tags = emptyList(),
         open =
-            MENU + "Tags"
+            MENU + "Tag"
     )
 
     @Test
@@ -389,7 +389,7 @@ class HomeScreenScreenshotTest {
         name,
         darkTheme,
         IDLE,
-        recordings = TAGGED_LIBRARY.filter { selectedTag == null || selectedTag.id in it.tagIds },
+        recordings = TAGGED_LIBRARY.filter { selectedTag == null || it.tagId == selectedTag.id },
         playback = playback,
         fontScale = fontScale,
         open = open,
@@ -604,33 +604,32 @@ class HomeScreenScreenshotTest {
             recording("2026-10-01T09:05:00Z", null, 195_000, extension = "aac")
         ) + LIBRARY.drop(1)
 
-        val WORK = Tag(1, "Work")
-        val IDEAS = Tag(2, "Ideas")
-        val ERRANDS = Tag(3, "Errands")
-        val UNUSED = Tag(4, "Travel")
+        val WORK = Tag(1, "Work", hue = 210)
+        val IDEAS = Tag(2, "Ideas", hue = 45)
+        val ERRANDS = Tag(3, "Errands", hue = 140)
+        val UNUSED = Tag(4, "Travel", hue = 300)
         val TAGS = listOf(WORK, IDEAS, ERRANDS, UNUSED)
 
         // Sorted by name like the repository; one at the 30-character limit.
         val MANY_TAGS = listOf(
-            Tag(10, "Building management and heat"),
+            Tag(10, "Building management and heat", hue = 20),
             ERRANDS,
-            Tag(11, "Family"),
+            Tag(11, "Family", hue = 330),
             IDEAS,
-            Tag(12, "Lectures"),
-            Tag(13, "Podcast drafts"),
+            Tag(12, "Lectures", hue = 175),
+            Tag(13, "Podcast drafts", hue = 265),
             UNUSED,
             WORK
         )
 
-        // Grocery list: Errands and Ideas. Interview: Work. Song idea: Ideas. The two untitled ones after them: Work.
+        // Grocery list: Errands. Interview: Work. The two untitled ones after it: Work. Song idea: Ideas.
         val TAGGED_LIBRARY = LIBRARY.mapIndexed { index, recording ->
             recording.copy(
-                tagIds = when (index) {
-                    1 -> setOf(ERRANDS.id, IDEAS.id)
-                    2 -> setOf(WORK.id, 10L)
-                    3, 4 -> setOf(WORK.id)
-                    5 -> setOf(IDEAS.id)
-                    else -> emptySet()
+                tagId = when (index) {
+                    1 -> ERRANDS.id
+                    2, 3, 4 -> WORK.id
+                    5 -> IDEAS.id
+                    else -> null
                 }
             )
         }

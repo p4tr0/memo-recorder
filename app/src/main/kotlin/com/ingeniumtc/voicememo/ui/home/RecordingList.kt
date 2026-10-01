@@ -53,9 +53,11 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -68,12 +70,14 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.ingeniumtc.voicememo.R
 import com.ingeniumtc.voicememo.data.Recording
 import com.ingeniumtc.voicememo.data.Tag
 import com.ingeniumtc.voicememo.data.TagNames
 import com.ingeniumtc.voicememo.playback.PlaybackState
+import com.ingeniumtc.voicememo.ui.theme.tagColor
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -93,7 +97,7 @@ internal fun RecordingList(
     tags: List<Tag> = emptyList(),
     /** Unfiltered, so the tags dialog stays open when unticking the tag the list is filtered by. */
     allRecordings: List<Recording> = recordings,
-    onSetTagged: (Recording, Tag, Boolean) -> Unit = { _, _, _ -> },
+    onSetTag: (Recording, Tag?) -> Unit = { _, _ -> },
     onAddTagTo: (Recording, String) -> TagNames.Result? = { _, _ -> null },
     zone: ZoneId = ZoneId.systemDefault()
 ) {
@@ -135,8 +139,10 @@ internal fun RecordingList(
     ) {
         items(recordings, key = { it.id }) { recording ->
             val title = displayTitle(recording, zone)
+            val tag = recording.tagId?.let { id -> tags.firstOrNull { it.id == id } }
             RecordingRow(
                 recording = recording,
+                tagColor = tag?.let { tagColor(it.hue) },
                 title = title,
                 subtitle = subtitle(recording, zone),
                 playback = playback.takeIf { it.currentId == recording.id },
@@ -168,7 +174,7 @@ internal fun RecordingList(
             recording = recording,
             title = displayTitle(recording, zone),
             tags = tags,
-            onToggle = { tag, tagged -> onSetTagged(recording, tag, tagged) },
+            onSelect = { onSetTag(recording, it) },
             onAddTag = { onAddTagTo(recording, it) },
             onDismiss = { tagging = null }
         )
@@ -189,6 +195,8 @@ internal fun RecordingList(
 @Composable
 private fun RecordingRow(
     recording: Recording,
+    /** Its tag's color, drawn as a stripe on the start edge, or null when untagged. */
+    tagColor: Color?,
     title: String,
     subtitle: String,
     playback: PlaybackState?,
@@ -221,7 +229,21 @@ private fun RecordingRow(
             .fillMaxWidth()
             .padding(horizontal = 8.dp)
             .clip(ROW_SHAPE)
-            .drawBehind { drawRect(container) }
+            .drawBehind {
+                drawRect(container)
+                if (tagColor != null) {
+                    // Inset from the row's rounded corners, which would otherwise clip its ends into slivers.
+                    val width = TAG_STRIPE_WIDTH.toPx()
+                    val inset = TAG_STRIPE_INSET.toPx()
+                    val x = if (layoutDirection == LayoutDirection.Rtl) size.width - width else 0f
+                    drawRoundRect(
+                        tagColor,
+                        topLeft = Offset(x, inset),
+                        size = Size(width, size.height - 2 * inset),
+                        cornerRadius = CornerRadius(width / 2)
+                    )
+                }
+            }
     ) {
         Box {
             // The whole row is a tap target for play, but TalkBack gets it once, from the labeled play button.
@@ -471,6 +493,8 @@ private fun subtitle(recording: Recording, zone: ZoneId): String {
 private fun dateTime(): DateTimeFormatter = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
 
 private val ROW_SHAPE = RoundedCornerShape(20.dp)
+private val TAG_STRIPE_WIDTH = 3.dp
+private val TAG_STRIPE_INSET = 12.dp
 private val TAG_SHAPE = RoundedCornerShape(6.dp)
 private val EDGE_FADE = 24.dp
 private const val LARGE_FONT_SCALE = 1.5f
