@@ -24,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -222,6 +223,19 @@ class HomeViewModelTest {
         assertEquals("Ideas", ideas.name)
         assertEquals(ideas, library.selectedTag)
         assertEquals(ideas.id, tagSelection.saved)
+    }
+
+    @Test
+    fun `adding the same tag twice, in any case, makes one tag and selects it`() = runTest(dispatcher) {
+        syncTwoRecordings()
+        val vm = viewModel()
+        backgroundScope.launch { vm.library.collect {} }
+        vm.addTag("Work")
+        vm.addTag("work")
+        val library = vm.awaitLibrary { it.selectedTag != null }
+        withContext(Dispatchers.Default) { delay(200) } // Let both creates land.
+        assertEquals(listOf("Work"), repository.tags.first().map { it.name })
+        assertEquals("Work", library.selectedTag!!.name)
     }
 
     @Test

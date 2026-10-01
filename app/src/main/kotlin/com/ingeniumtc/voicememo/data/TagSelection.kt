@@ -15,7 +15,8 @@ interface TagSelection {
 
 /** SharedPreferences, only touched off the main thread: the first read loads the file from disk. */
 class SharedPreferencesTagSelection(context: Context, private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO) :
-    TagSelection {
+    TagSelection,
+    PendingTag {
     private val appContext = context.applicationContext
     private val prefs by lazy { appContext.getSharedPreferences(FILE, Context.MODE_PRIVATE) }
 
@@ -27,9 +28,31 @@ class SharedPreferencesTagSelection(context: Context, private val ioDispatcher: 
         prefs.edit { putLong(KEY, tagId ?: ALL) }
     }
 
+    override suspend fun loadPending(): Pair<String, Long>? = withContext(ioDispatcher) {
+        val baseName = prefs.getString(PENDING_NAME, null) ?: return@withContext null
+        baseName to prefs.getLong(PENDING_TAG, ALL)
+    }
+
+    // commit, not apply: the process may die right after, and surviving that is the point.
+    override suspend fun savePending(baseName: String, tagId: Long) = withContext(ioDispatcher) {
+        prefs.edit(commit = true) {
+            putString(PENDING_NAME, baseName)
+            putLong(PENDING_TAG, tagId)
+        }
+    }
+
+    override suspend fun clearPending() = withContext(ioDispatcher) {
+        prefs.edit(commit = true) {
+            remove(PENDING_NAME)
+            remove(PENDING_TAG)
+        }
+    }
+
     private companion object {
         const val FILE = "library"
         const val KEY = "selected_tag_id"
         const val ALL = -1L
+        const val PENDING_NAME = "pending_tag_recording"
+        const val PENDING_TAG = "pending_tag_id"
     }
 }

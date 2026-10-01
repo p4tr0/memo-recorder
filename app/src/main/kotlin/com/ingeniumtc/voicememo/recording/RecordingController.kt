@@ -33,7 +33,9 @@ class RecordingController(
     private val clock: () -> Long = SystemClock::elapsedRealtime,
     private val now: () -> LocalDateTime = LocalDateTime::now,
     /** Called on the recorder dispatcher whenever finished files may have changed: after a save or recovery. */
-    private val onFilesChanged: () -> Unit = {}
+    private val onFilesChanged: () -> Unit = {},
+    /** Called on the recorder dispatcher once a recording is running, with its `.part` file. */
+    private val onSessionStarted: (File) -> Unit = {}
 ) {
     private val _state = MutableStateFlow<RecordingState>(RecordingState.Idle)
     val state: StateFlow<RecordingState> = _state.asStateFlow()
@@ -67,6 +69,7 @@ class RecordingController(
         recorder = r
         partialFile = output
         _state.value = RecordingState.Active(isPaused = false, accumulatedMs = 0, resumedAt = clock())
+        onSessionStarted(output)
         startMeter(r)
     }
 

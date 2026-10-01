@@ -107,20 +107,15 @@ class RecordingRepository(
      * be trimmed and validated ([TagNames.validate]).
      */
     suspend fun createTag(name: String): Tag = withContext(ioDispatcher + NonCancellable) {
-        val id = dao.insertTag(TagEntity(name = name))
-        if (id != -1L) Tag(id, name) else dao.tagNamed(name)!!.let { Tag(it.id, it.name) }
+        val key = TagNames.key(name)
+        val id = dao.insertTag(TagEntity(name = name, key = key))
+        if (id != -1L) Tag(id, name) else dao.tagWithKey(key)!!.let { Tag(it.id, it.name) }
     }
 
     suspend fun setTagged(recording: Recording, tag: Tag, tagged: Boolean) = setTagged(recording.id, tag.id, tagged)
 
-    /**
-     * Tags a just-saved recording. Its row is added by a sync that may still be running, so this syncs first:
-     * the link needs the row to exist.
-     */
-    suspend fun tagNewRecording(fileName: String, tagId: Long) {
-        sync()
-        setTagged(fileName, tagId, tagged = true)
-    }
+    /** Tags a file by name. Its row must exist (sync first), or this is a logged no-op. */
+    suspend fun tagFile(fileName: String, tagId: Long) = setTagged(fileName, tagId, tagged = true)
 
     private suspend fun setTagged(fileName: String, tagId: Long, tagged: Boolean) =
         withContext(ioDispatcher + NonCancellable) {

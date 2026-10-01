@@ -28,13 +28,12 @@ interface RecordingDao {
     @Query("SELECT * FROM tags ORDER BY id")
     fun observeTags(): Flow<List<TagEntity>>
 
-    /** Returns the new id, or -1 if a tag with that name (ignoring case) already exists. */
+    /** Returns the new id, or -1 if a tag with that key already exists. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertTag(tag: TagEntity): Long
 
-    /** Case-insensitive, through the column's NOCASE collation. */
-    @Query("SELECT * FROM tags WHERE name = :name")
-    suspend fun tagNamed(name: String): TagEntity?
+    @Query("SELECT * FROM tags WHERE key = :key")
+    suspend fun tagWithKey(key: String): TagEntity?
 
     @Query("SELECT * FROM recording_tags")
     fun observeRecordingTags(): Flow<List<RecordingTagEntity>>

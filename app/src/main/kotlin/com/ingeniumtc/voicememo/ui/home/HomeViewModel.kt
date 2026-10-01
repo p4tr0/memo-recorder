@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** The library as the Home screen shows it: [recordings] is already filtered by [selectedTag]. */
 data class Library(
@@ -63,6 +65,7 @@ class HomeViewModel(
 
     // Null until the saved choice is read, so the list doesn't flash "All" before switching to the remembered tag.
     private val selectedTagId = MutableStateFlow<Selection?>(null)
+    private val saveMutex = Mutex()
 
     /** Null while loading. */
     val library: StateFlow<Library?> =
@@ -126,7 +129,10 @@ class HomeViewModel(
     /** Null selects All. Remembered for the next launch. */
     fun selectTag(tag: Tag?) {
         selectedTagId.value = Selection(tag?.id)
-        viewModelScope.launch { tagSelection.save(tag?.id) }
+        // Saves whatever is selected by the time the lock is free, so quick taps can't land out of order.
+        viewModelScope.launch {
+            saveMutex.withLock { selectedTagId.value?.let { tagSelection.save(it.tagId) } }
+        }
     }
 
     /**

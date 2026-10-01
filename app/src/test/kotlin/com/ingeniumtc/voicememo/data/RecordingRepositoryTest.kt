@@ -229,18 +229,32 @@ class RecordingRepositoryTest {
     }
 
     @Test
-    fun `a new recording can be tagged before the library has synced it`() = runTest {
+    fun `tagging a file without a row is ignored rather than crashing`() = runTest {
         val work = repository.createTag("Work")
-        file("2026-10-01_09-05-00.m4a")
-        repository.tagNewRecording("2026-10-01_09-05-00.m4a", work.id)
-        assertEquals(setOf(work.id), repository.recordings.first().single().tagIds)
+        repository.tagFile("never-existed.m4a", work.id)
+        assertTrue(repository.recordings.first().isEmpty())
     }
 
     @Test
-    fun `tagging a recording that is gone is ignored rather than crashing`() = runTest {
+    fun `uniqueness ignores case in every script, not just ASCII`() = runTest {
+        val city = repository.createTag("Łódź")
+        assertEquals(city, repository.createTag("łódź"))
+        assertEquals(repository.createTag("ÄRZTE"), repository.createTag("ärzte"))
+        assertEquals(2, repository.tags.first().size)
+    }
+
+    @Test
+    fun `deleting a recording keeps its tags for other recordings`() = runTest {
+        file("2026-10-01_09-05-00.m4a")
+        file("2026-10-02_09-05-00.m4a")
+        repository.sync()
         val work = repository.createTag("Work")
-        repository.tagNewRecording("never-existed.m4a", work.id)
-        assertTrue(repository.recordings.first().isEmpty())
+        repository.recordings.first().forEach { repository.setTagged(it, work, tagged = true) }
+
+        repository.delete(repository.recordings.first().first())
+
+        assertEquals(listOf(work), repository.tags.first())
+        assertEquals(setOf(work.id), repository.recordings.first().single().tagIds)
     }
 
     private fun file(name: String): File = File(dir, name).apply { writeText(FAKE_AUDIO) }

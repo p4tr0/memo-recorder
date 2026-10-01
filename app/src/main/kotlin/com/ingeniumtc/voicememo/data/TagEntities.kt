@@ -1,17 +1,16 @@
 package com.ingeniumtc.voicememo.data
 
-import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-/** A user-created label. Names are unique ignoring case, so "Work" and "work" are the same tag. */
-@Entity(tableName = "tags", indices = [Index(value = ["name"], unique = true)])
-data class TagEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    @ColumnInfo(collate = ColumnInfo.NOCASE) val name: String
-)
+/**
+ * A user-created label. Names are unique ignoring case, so "Work" and "work" are the same tag. Uniqueness is on
+ * [key] ([TagNames.key]) rather than SQLite's NOCASE, which only folds ASCII and would let "Łódź" and "łódź" be two.
+ */
+@Entity(tableName = "tags", indices = [Index(value = ["key"], unique = true)])
+data class TagEntity(@PrimaryKey(autoGenerate = true) val id: Long = 0, val name: String, val key: String)
 
 /**
  * Which recordings carry which tags. Both sides cascade, so deleting a recording's row (its file is gone) or a

@@ -92,6 +92,18 @@ class RecordingStorage(private val dir: File, private val remuxer: AudioRemuxer)
         return dir.listFiles { f -> f.isFile && (f.name.endsWith(M4A) || f.name.endsWith(AAC)) }?.toList()
     }
 
+    /** What every file of one recording shares: `2026-10-01_09-05-00` for its `.aac.part`, `.m4a` and `.aac`. */
+    fun baseName(file: File): String = file.name.removeSuffix(PARTIAL).removeSuffix(M4A).removeSuffix(AAC)
+
+    /**
+     * The finished files of the recording [baseName] (normally one `.m4a`; also the raw `.aac` when remuxing
+     * dropped audio), and whether it is still unfinished (its `.part` exists: recording, or awaiting recovery).
+     */
+    fun filesOf(baseName: String): Pair<List<File>, Boolean> {
+        val finished = listOf(M4A, AAC).map { File(dir, "$baseName$it") }.filter { it.isFile }
+        return finished to File(dir, "$baseName$PARTIAL").exists()
+    }
+
     /** The finished recording called [fileName]. Names come from [finishedFiles], so never contain a path. */
     fun fileNamed(fileName: String): File = File(dir, fileName)
 

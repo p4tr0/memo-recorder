@@ -28,7 +28,18 @@ class MigrationTest {
                     "VALUES ('2026-10-01_09-05-00.m4a', 'Standup', 1000, 4200, 512)"
             )
         }
-        helper.runMigrationsAndValidate(DB, 2, true).close()
+        helper.runMigrationsAndValidate(DB, 2, true).use { db ->
+            // On the migrated database itself: foreign keys are declared, so a link to a missing recording fails.
+            db.execSQL("PRAGMA foreign_keys = ON")
+            db.execSQL("INSERT INTO tags (name, `key`) VALUES ('Work', 'work')")
+            val rejected = runCatching {
+                db.execSQL("INSERT INTO recording_tags (fileName, tagId) VALUES ('missing.m4a', 1)")
+            }
+            assertTrue(rejected.isFailure)
+            // And the key is unique.
+            assertTrue(runCatching { db.execSQL("INSERT INTO tags (name, `key`) VALUES ('WORK', 'work')") }.isFailure)
+            db.execSQL("DELETE FROM tags")
+        }
 
         // Open through Room itself, so the auto-migration it generated is the one exercised.
         val room = Room.databaseBuilder(ApplicationProvider.getApplicationContext(), VoiceMemoDatabase::class.java, DB)
