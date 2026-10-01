@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -116,31 +117,23 @@ fun HomeScreen(
             if (compactHeight) TopAppBar(title = title) else LargeTopAppBar(title = title)
         }
     ) { padding ->
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .consumeWindowInsets(padding),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            val content = when {
-                active != null -> Content.Recording
-                recordings == null -> Content.Loading
-                recordings.isEmpty() -> Content.Empty
-                else -> Content.Library
-            }
+        val content = when {
+            active != null -> Content.Recording
+            recordings == null -> Content.Loading
+            recordings.isEmpty() -> Content.Empty
+            else -> Content.Library
+        }
+        val center = @Composable { centerModifier: Modifier ->
             Crossfade(
                 targetState = content,
                 animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                 label = "center",
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                modifier = centerModifier
             ) { shown ->
                 when (shown) {
                     Content.Recording -> active?.let { Centered { RecordingStatus(it, clock) } }
 
-                    Content.Empty -> Centered { EmptyState() }
+                    Content.Empty -> Centered { EmptyState(controlsBeside = compactHeight) }
 
                     Content.Loading -> Unit
 
@@ -159,11 +152,15 @@ fun HomeScreen(
                     )
                 }
             }
-            // In the column, not the Scaffold slot, so a snackbar sits above the controls instead of on them.
+        }
+        // In the content column, not the Scaffold slot, so a snackbar sits above the controls instead of on them.
+        val snackbar = @Composable {
             SnackbarHost(
                 hostState = snackbarHostState,
                 modifier = Modifier.animateContentSize(spring(stiffness = Spring.StiffnessMediumLow))
             )
+        }
+        val controls = @Composable { vertical: Boolean, controlsModifier: Modifier ->
             RecordingControls(
                 active = active,
                 amplitude = amplitude,
@@ -171,9 +168,45 @@ fun HomeScreen(
                 onStopClick = onStopClick,
                 onPauseClick = onPauseClick,
                 onResumeClick = onResumeClick,
-                // HALO_CLEARANCE keeps the amplitude halo (up to 0.4 x radius) off the snackbar and screen edge.
-                modifier = Modifier.padding(top = HALO_CLEARANCE, bottom = if (compactHeight) HALO_CLEARANCE else 32.dp)
+                vertical = vertical,
+                modifier = controlsModifier
             )
+        }
+        val body = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .consumeWindowInsets(padding)
+        if (compactHeight) {
+            // Landscape phones and split screen: controls in a column on the end side, so the list keeps the
+            // height. HALO_CLEARANCE on both sides keeps the amplitude halo (up to 0.4 x radius) off the content
+            // and the screen edge.
+            Row(body, verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    center(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    )
+                    snackbar()
+                }
+                controls(true, Modifier.padding(horizontal = HALO_CLEARANCE))
+            }
+        } else {
+            Column(body, horizontalAlignment = Alignment.CenterHorizontally) {
+                center(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                )
+                snackbar()
+                // HALO_CLEARANCE keeps the amplitude halo off the snackbar.
+                controls(false, Modifier.padding(top = HALO_CLEARANCE, bottom = 32.dp))
+            }
         }
     }
 }
@@ -198,7 +231,7 @@ private fun Centered(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun EmptyState(modifier: Modifier = Modifier) {
+private fun EmptyState(controlsBeside: Boolean, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -216,7 +249,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
             textAlign = TextAlign.Center
         )
         Text(
-            text = stringResource(R.string.home_empty_body),
+            text = stringResource(if (controlsBeside) R.string.home_empty_body_beside else R.string.home_empty_body),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
@@ -300,14 +333,12 @@ private fun RecordingControls(
     onStopClick: () -> Unit,
     onPauseClick: () -> Unit,
     onResumeClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Stacked top to bottom instead of side by side, for the landscape side column. */
+    vertical: Boolean = false
 ) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(32.dp)
-    ) {
-        // Fixed-size side slots keep the record button centered whether or not pause is shown.
+    // Fixed-size slots either side keep the record button centered whether or not pause is shown.
+    val slots = @Composable {
         PauseResumeButton(active, onPauseClick, onResumeClick, Modifier.size(SIDE_BUTTON_SIZE))
         RecordButton(
             isRecording = active != null,
@@ -316,6 +347,19 @@ private fun RecordingControls(
             onClick = if (active != null) onStopClick else onRecordClick
         )
         Spacer(Modifier.size(SIDE_BUTTON_SIZE))
+    }
+    if (vertical) {
+        Column(
+            modifier = modifier,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(VERTICAL_CONTROLS_GAP)
+        ) { slots() }
+    } else {
+        Row(
+            modifier = modifier,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(32.dp)
+        ) { slots() }
     }
 }
 
@@ -419,6 +463,9 @@ private val RECORD_BUTTON_SIZE = 88.dp
 private val SIDE_BUTTON_SIZE = 56.dp
 private val COMPACT_HEIGHT = 480.dp
 private val HALO_CLEARANCE = 24.dp
+
+// Tighter than the 32dp row gap to fit short windows; still clears the halo's 0.4 x 44dp reach.
+private val VERTICAL_CONTROLS_GAP = 24.dp
 private val TIMER_MIN_FONT_SIZE = 32.sp
 private const val RING_ALPHA = 0.12f
 private const val STATIC_HALO_LEVEL = 0.3f

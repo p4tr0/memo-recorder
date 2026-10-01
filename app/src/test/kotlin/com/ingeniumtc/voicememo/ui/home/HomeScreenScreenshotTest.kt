@@ -8,8 +8,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -67,7 +69,20 @@ class HomeScreenScreenshotTest {
 
     @Test
     @Config(qualifiers = "+land")
+    fun recordingLandscapeLight() =
+        capture("home_recording_landscape_light", darkTheme = false, RECORDING, amplitude = 0.7f)
+
+    @Test
+    @Config(qualifiers = "+land")
     fun pausedLandscapeLight() = capture("home_paused_landscape_light", darkTheme = false, PAUSED, snackbar = true)
+
+    @Test
+    @Config(qualifiers = "+land")
+    fun pausedLandscapeDark() = capture("home_paused_landscape_dark", darkTheme = true, PAUSED)
+
+    @Test
+    @Config(qualifiers = "+land")
+    fun emptyLandscapeLight() = capture("home_empty_landscape_light", darkTheme = false, IDLE)
 
     @Test
     fun recordingFontScale2xLight() =
@@ -172,6 +187,41 @@ class HomeScreenScreenshotTest {
     @Test
     fun deleteDialogDark() = capture("home_delete_dialog_dark", darkTheme = true, IDLE, LIBRARY, open = MENU + "Delete")
 
+    @Test
+    fun libraryUnprocessedLight() =
+        capture("home_library_unprocessed_light", darkTheme = false, IDLE, recordings = WITH_UNPROCESSED)
+
+    @Test
+    fun libraryUnprocessedDark() =
+        capture("home_library_unprocessed_dark", darkTheme = true, IDLE, recordings = WITH_UNPROCESSED)
+
+    @Test
+    fun libraryUnprocessedFontScale2xLight() = capture(
+        "home_library_unprocessed_font2x_light",
+        darkTheme = false,
+        IDLE,
+        recordings = WITH_UNPROCESSED,
+        fontScale = 2f
+    )
+
+    @Test
+    fun deleteUnprocessedDialogLight() = capture(
+        "home_delete_unprocessed_dialog_light",
+        darkTheme = false,
+        IDLE,
+        WITH_UNPROCESSED,
+        open = UNPROCESSED_MENU + "Delete"
+    )
+
+    @Test
+    fun deleteUnprocessedDialogDark() = capture(
+        "home_delete_unprocessed_dialog_dark",
+        darkTheme = true,
+        IDLE,
+        WITH_UNPROCESSED,
+        open = UNPROCESSED_MENU + "Delete"
+    )
+
     /**
      * [open] is a list of clicks performed before capturing: the first is a content description, the rest are
      * texts. With clicks, the whole screen is captured so popups (menus, dialogs) are included.
@@ -221,7 +271,7 @@ class HomeScreenScreenshotTest {
             composeRule.onRoot().captureRoboImage(path)
             return
         }
-        composeRule.onNodeWithContentDescription(open.first()).performClick()
+        composeRule.onNode(contentDescriptionIgnoringNarrowSpaces(open.first())).performClick()
         composeRule.waitForIdle()
         // A focused text field's cursor blinks forever, so from here frames are stepped by hand instead of waiting
         // for idle, draining the looper each frame so new popup and dialog windows get attached and drawn.
@@ -235,6 +285,13 @@ class HomeScreenScreenshotTest {
         captureScreenRoboImage(path)
     }
 
+    /** Localized times put a narrow no-break space before AM/PM; matches it as a plain space. */
+    private fun contentDescriptionIgnoringNarrowSpaces(value: String) =
+        SemanticsMatcher("ContentDescription = '$value'") { node ->
+            node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
+                .any { it.replace('\u202F', ' ') == value }
+        }
+
     private companion object {
         const val SETTLE_FRAMES = 60
         val IDLE = RecordingState.Idle
@@ -245,13 +302,14 @@ class HomeScreenScreenshotTest {
         val RECORDING_LONG = RecordingState.Active(isPaused = false, accumulatedMs = 3_640_000, resumedAt = 0)
 
         /** [createdAt] is ISO-8601 UTC, e.g. 2026-10-01T09:05:00Z; the file is named after it like real ones. */
-        private fun recording(createdAt: String, title: String?, durationMs: Long) = Recording(
-            file = File(createdAt.removeSuffix("Z").replace('T', '_').replace(':', '-') + ".m4a"),
-            title = title,
-            createdAt = Instant.parse(createdAt),
-            durationMs = durationMs,
-            sizeBytes = durationMs * 8
-        )
+        private fun recording(createdAt: String, title: String?, durationMs: Long, extension: String = "m4a") =
+            Recording(
+                file = File(createdAt.removeSuffix("Z").replace('T', '_').replace(':', '-') + ".$extension"),
+                title = title,
+                createdAt = Instant.parse(createdAt),
+                durationMs = durationMs,
+                sizeBytes = durationMs * 8
+            )
 
         val LIBRARY = listOf(
             recording("2026-10-01T09:05:00Z", null, 195_000),
@@ -277,5 +335,13 @@ class HomeScreenScreenshotTest {
 
         // The overflow button of the renamed "Grocery list" row.
         val MENU = listOf("More options for Grocery list")
+
+        // A remux that dropped audio: the short .m4a and the complete raw .aac share the date and default title.
+        val WITH_UNPROCESSED = listOf(
+            recording("2026-10-01T09:05:00Z", null, 168_000),
+            recording("2026-10-01T09:05:00Z", null, 195_000, extension = "aac")
+        ) + LIBRARY.drop(1)
+
+        val UNPROCESSED_MENU = listOf("More options for Oct 1, 2026, 9:05 AM, unprocessed original")
     }
 }

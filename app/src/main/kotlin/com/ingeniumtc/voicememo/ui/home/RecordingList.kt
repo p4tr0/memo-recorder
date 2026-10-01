@@ -9,6 +9,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -156,6 +157,7 @@ internal fun RecordingList(
     recordings.firstOrNull { it.id == deleting }?.let { recording ->
         DeleteDialog(
             title = displayTitle(recording, zone),
+            unprocessed = recording.isRawAac,
             onDismiss = { deleting = null },
             onConfirm = {
                 onDelete(recording)
@@ -181,7 +183,10 @@ private fun RecordingRow(
 ) {
     val playing = playback?.isPlaying == true
     val current = playback != null
-    val playLabel = stringResource(if (playing) R.string.action_pause_playback else R.string.action_play, title)
+    // A raw copy can share its date (and so its default title) with a processed one; its buttons must say which.
+    val spokenName = if (recording.isRawAac) stringResource(R.string.recording_name_unprocessed, title) else title
+    val playLabel =
+        stringResource(if (playing) R.string.action_pause_playback else R.string.action_play, spokenName)
     // The current row sits on a subtle tint, so it reads as one unit with its seek bar.
     val tint = MaterialTheme.colorScheme.surfaceContainer
     val container by animateColorAsState(
@@ -238,15 +243,23 @@ private fun RecordingRow(
                         maxLines = maxLines,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = maxLines,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Leading, so ellipsizing never hides it.
+                        if (recording.isRawAac) UnprocessedTag()
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = maxLines,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                    }
                 }
-                OverflowMenu(title, onRenameClick, onShareClick, onDeleteClick)
+                OverflowMenu(spokenName, onRenameClick, onShareClick, onDeleteClick)
             }
         }
         AnimatedVisibility(
@@ -259,6 +272,20 @@ private fun RecordingRow(
             SeekBar(positionMs = playbackPositionMs, durationMs = durationMs, onSeek = onSeek)
         }
     }
+}
+
+/** Quiet outlined tag for a kept raw recording. Rare, so it informs without competing with the title. */
+@Composable
+private fun UnprocessedTag() {
+    Text(
+        text = stringResource(R.string.label_unprocessed),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        modifier = Modifier
+            .border(1.dp, MaterialTheme.colorScheme.outline, TAG_SHAPE)
+            .padding(horizontal = 6.dp, vertical = 1.dp)
+    )
 }
 
 @Composable
@@ -369,11 +396,13 @@ private fun RenameDialog(initial: String, placeholder: String, onDismiss: () -> 
 }
 
 @Composable
-private fun DeleteDialog(title: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+private fun DeleteDialog(title: String, unprocessed: Boolean, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.delete_title)) },
-        text = { Text(stringResource(R.string.delete_body, title)) },
+        text = {
+            Text(stringResource(if (unprocessed) R.string.delete_body_unprocessed else R.string.delete_body, title))
+        },
         confirmButton = {
             // Filled, so the irreversible action outweighs Cancel (both would otherwise be reddish text).
             Button(
@@ -409,5 +438,6 @@ private fun subtitle(recording: Recording, zone: ZoneId): String {
 private fun dateTime(): DateTimeFormatter = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
 
 private val ROW_SHAPE = RoundedCornerShape(20.dp)
+private val TAG_SHAPE = RoundedCornerShape(6.dp)
 private val EDGE_FADE = 24.dp
 private const val LARGE_FONT_SCALE = 1.5f

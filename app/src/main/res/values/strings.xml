@@ -59,4 +59,11 @@
     <string name="message_save_failed">Recording kept but not fully saved yet. It will be finished automatically.</string>
     <!-- Spoken by TalkBack for the seek bar, e.g. "0:42 of 3:15". -->
     <string name="seek_state">%1$s of %2$s</string>
+    <!-- Tag on a kept raw .aac recording. It can sit next to a processed copy with the same date; this one is complete. -->
+    <string name="label_unprocessed">Unprocessed</string>
+    <!-- How TalkBack names a raw recording in its row and buttons, e.g. "Play Oct 1, 9:05 AM, unprocessed original". -->
+    <string name="recording_name_unprocessed">%1$s, unprocessed original</string>
+    <string name="delete_body_unprocessed">“%1$s” will be permanently deleted. This is the unprocessed original, which can be more complete than a processed copy with the same date.</string>
+    <!-- Empty state body when the record button sits beside the content (landscape) instead of below it. -->
+    <string name="home_empty_body_beside">Tap the record button to record your first memo.</string>
 </resources>
