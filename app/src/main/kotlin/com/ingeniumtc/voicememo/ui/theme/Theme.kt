@@ -20,6 +20,8 @@ private val DarkColors = darkColorScheme(
     onSurface = Color.White,
     surfaceContainer = InkRaised,
     surfaceContainerHigh = InkHigh,
+    secondaryContainer = InkHigh,
+    onSecondaryContainer = Color.White,
     onSurfaceVariant = Mist
 )
 
@@ -31,6 +33,8 @@ private val LightColors = lightColorScheme(
     surface = Paper,
     onSurface = Ink,
     surfaceContainer = PaperRaised,
+    secondaryContainer = PaperSunken,
+    onSecondaryContainer = Ink,
     onSurfaceVariant = Slate
 )
 
