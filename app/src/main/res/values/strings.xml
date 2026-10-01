@@ -29,6 +29,25 @@
     <string name="action_stop">Stop</string>
     <string name="action_settings">Settings</string>
 
+    <string name="action_play">Play %1$s</string>
+    <string name="action_pause_playback">Pause %1$s</string>
+    <string name="action_more">More options for %1$s</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_share">Share</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="seek_position">Playback position</string>
+
+    <string name="rename_title">Rename recording</string>
+    <string name="rename_label">Name</string>
+    <string name="rename_hint">Leave empty to show the date</string>
+    <string name="delete_title">Delete recording?</string>
+    <string name="delete_body">\u201c%1$s\u201d will be permanently deleted.</string>
+    <string name="share_chooser_title">Share recording</string>
+    <!-- Subtitle of a renamed recording: its date, then its length. -->
+    <string name="recording_subtitle">%1$s \u00b7 %2$s</string>
+
     <string name="notification_channel_recording">Recording</string>
 
     <string name="message_saved">Saved %1$s recording</string>
@@ -36,5 +55,6 @@
     <string name="message_could_not_start">Couldn\'t start recording. The microphone may be in use by another app.</string>
     <string name="message_too_short">Recording was too short to save</string>
     <string name="message_recorder_error">Recording failed and couldn\'t be saved</string>
+    <string name="message_delete_failed">Couldn\'t delete %1$s</string>
     <string name="message_save_failed">Recording kept but not fully saved yet. It will be finished automatically.</string>
 </resources>

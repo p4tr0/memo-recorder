@@ -31,7 +31,9 @@ class RecordingController(
     @Suppress("OPT_IN_USAGE")
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(1),
     private val clock: () -> Long = SystemClock::elapsedRealtime,
-    private val now: () -> LocalDateTime = LocalDateTime::now
+    private val now: () -> LocalDateTime = LocalDateTime::now,
+    /** Called on the recorder dispatcher whenever finished files may have changed: after a save or recovery. */
+    private val onFilesChanged: () -> Unit = {}
 ) {
     private val _state = MutableStateFlow<RecordingState>(RecordingState.Idle)
     val state: StateFlow<RecordingState> = _state.asStateFlow()
@@ -104,6 +106,8 @@ class RecordingController(
         if (_state.value != RecordingState.Idle) return@command
         val recovered = storage.recoverInterrupted()
         if (recovered.isNotEmpty()) Log.i(TAG, "Recovered ${recovered.size} interrupted recording(s)")
+        // Always, so the library also picks up files from a run whose save finished but whose sync didn't.
+        onFilesChanged()
     }
 
     /** For failures outside the recorder, such as the system refusing to start the foreground service. */
@@ -132,6 +136,7 @@ class RecordingController(
         val commit = runCatching { storage.commit(partial) }
             .onFailure { Log.e(TAG, "Could not save ${partial.name}", it) }
         val saved = commit.getOrNull()
+        if (saved != null) onFilesChanged()
         _state.value = RecordingState.Idle
         _events.tryEmit(
             when {

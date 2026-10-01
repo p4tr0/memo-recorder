@@ -24,6 +24,7 @@ class RecordingControllerTest {
 
     private val recorders = mutableListOf<FakeRecorder>()
     private var nowMs = 1_000L
+    private var filesChanged = 0
 
     private fun TestScope.controller(configure: FakeRecorder.() -> Unit = {}): Pair<RecordingController, File> {
         val dir = tmp.newFolder("recordings")
@@ -33,7 +34,8 @@ class RecordingControllerTest {
             scope = backgroundScope,
             dispatcher = StandardTestDispatcher(testScheduler),
             clock = { nowMs },
-            now = { LocalDateTime.of(2026, 10, 1, 11, 30, 5) }
+            now = { LocalDateTime.of(2026, 10, 1, 11, 30, 5) },
+            onFilesChanged = { filesChanged++ }
         )
         return controller to dir
     }
@@ -257,6 +259,33 @@ class RecordingControllerTest {
         controller.recoverInterruptedRecordings()
         runCurrent()
         assertEquals(listOf("cut-off.m4a", "kept.m4a"), dir.list()!!.sorted())
+    }
+
+    @Test
+    fun `library is told about saves and recovery`() = runTest {
+        val (controller, _) = controller()
+        controller.recoverInterruptedRecordings()
+        runCurrent()
+        assertEquals(1, filesChanged)
+
+        controller.start()
+        runCurrent()
+        controller.stop()
+        runCurrent()
+        assertEquals(2, filesChanged)
+    }
+
+    @Test
+    fun `library is not told about a discarded recording`() = runTest {
+        val (controller, _) = controller {
+            failOnStop = true
+            writesAudio = false
+        }
+        controller.start()
+        runCurrent()
+        controller.stop()
+        runCurrent()
+        assertEquals(0, filesChanged)
     }
 
     @Test

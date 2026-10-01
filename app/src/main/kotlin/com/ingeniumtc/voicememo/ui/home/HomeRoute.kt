@@ -25,10 +25,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ingeniumtc.voicememo.R
+import com.ingeniumtc.voicememo.data.Recording
 import com.ingeniumtc.voicememo.recording.RecordingEvent
+import java.time.ZoneId
 import kotlinx.coroutines.launch
 
 /** Wires [HomeScreen] to the ViewModel and owns the permission flow. */
@@ -36,6 +39,8 @@ import kotlinx.coroutines.launch
 fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory)) {
     val recordingState by viewModel.recordingState.collectAsStateWithLifecycle()
     val amplitude = viewModel.amplitude.collectAsStateWithLifecycle()
+    val recordings by viewModel.recordings.collectAsStateWithLifecycle()
+    val playback by viewModel.playbackState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val resources = LocalResources.current
     val activity = LocalActivity.current
@@ -84,8 +89,23 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
         }
     }
 
+    LaunchedEffect(viewModel) {
+        viewModel.deleteFailures.collect { recording ->
+            snackbarHostState.showSnackbar(
+                resources.getString(R.string.message_delete_failed, displayTitle(recording, ZoneId.systemDefault()))
+            )
+        }
+    }
+
     HomeScreen(
         recordingState = recordingState,
+        recordings = recordings,
+        playback = playback,
+        onPlayClick = viewModel::togglePlayback,
+        onSeek = viewModel::seekTo,
+        onRename = viewModel::rename,
+        onDelete = viewModel::delete,
+        onShare = { shareRecording(context, it) },
         amplitude = { amplitude.value },
         snackbarHostState = snackbarHostState,
         onRecordClick = {
@@ -110,6 +130,16 @@ private fun recordingPermissions(): Array<String> = buildList {
     add(Manifest.permission.RECORD_AUDIO)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
 }.toTypedArray()
+
+/** Hands a read-only content URI to the share sheet. The grant lasts only as long as the receiving activity. */
+private fun shareRecording(context: Context, recording: Recording) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", recording.file)
+    val send = Intent(Intent.ACTION_SEND)
+        .setType(if (recording.file.extension == "aac") "audio/aac" else "audio/mp4")
+        .putExtra(Intent.EXTRA_STREAM, uri)
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    context.startActivity(Intent.createChooser(send, context.getString(R.string.share_chooser_title)))
+}
 
 private fun openAppSettings(context: Context) {
     context.startActivity(

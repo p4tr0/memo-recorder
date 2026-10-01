@@ -74,9 +74,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ingeniumtc.voicememo.R
+import com.ingeniumtc.voicememo.data.Recording
+import com.ingeniumtc.voicememo.playback.PlaybackState
 import com.ingeniumtc.voicememo.recording.RecordingState
 import com.ingeniumtc.voicememo.ui.theme.RecordRed
 import com.ingeniumtc.voicememo.ui.theme.VoiceMemoTheme
+import java.time.ZoneId
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 
@@ -90,8 +93,17 @@ fun HomeScreen(
     onPauseClick: () -> Unit,
     onResumeClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Null while loading, so the empty state doesn't flash before the first query returns. */
+    recordings: List<Recording>? = emptyList(),
+    playback: PlaybackState = PlaybackState(),
+    onPlayClick: (Recording, String) -> Unit = { _, _ -> },
+    onSeek: (Long) -> Unit = {},
+    onRename: (Recording, String) -> Unit = { _, _ -> },
+    onDelete: (Recording) -> Unit = {},
+    onShare: (Recording) -> Unit = {},
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
-    clock: () -> Long = SystemClock::elapsedRealtime
+    clock: () -> Long = SystemClock::elapsedRealtime,
+    zone: ZoneId = ZoneId.systemDefault()
 ) {
     val active = recordingState as? RecordingState.Active
     // Landscape phones and split screen: the large bar would eat most of the height.
@@ -110,27 +122,39 @@ fun HomeScreen(
                 .consumeWindowInsets(padding),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Scrolls only when the content can't fit (landscape, 2x font); otherwise stays centered.
-            BoxWithConstraints(
-                Modifier
+            val content = when {
+                active != null -> Content.Recording
+                recordings == null -> Content.Loading
+                recordings.isEmpty() -> Content.Empty
+                else -> Content.Library
+            }
+            Crossfade(
+                targetState = content,
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                label = "center",
+                modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .heightIn(min = maxHeight)
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Crossfade(
-                        targetState = active != null,
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                        label = "center"
-                    ) { recording ->
-                        if (recording && active != null) RecordingStatus(active, clock) else EmptyState()
-                    }
+            ) { shown ->
+                when (shown) {
+                    Content.Recording -> active?.let { Centered { RecordingStatus(it, clock) } }
+
+                    Content.Empty -> Centered { EmptyState() }
+
+                    Content.Loading -> Unit
+
+                    // Recordings is non-null here except for a frame while fading out of the library.
+                    Content.Library -> RecordingList(
+                        recordings = recordings.orEmpty(),
+                        playback = playback,
+                        onPlayClick = onPlayClick,
+                        onSeek = onSeek,
+                        onRename = onRename,
+                        onDelete = onDelete,
+                        onShare = onShare,
+                        zone = zone,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
             // In the column, not the Scaffold slot, so a snackbar sits above the controls instead of on them.
@@ -148,6 +172,25 @@ fun HomeScreen(
                 // HALO_CLEARANCE keeps the amplitude halo (up to 0.4 x radius) off the snackbar and screen edge.
                 modifier = Modifier.padding(top = HALO_CLEARANCE, bottom = if (compactHeight) HALO_CLEARANCE else 32.dp)
             )
+        }
+    }
+}
+
+private enum class Content { Loading, Empty, Library, Recording }
+
+/** Scrolls only when the content can't fit (landscape, 2x font); otherwise stays centered. */
+@Composable
+private fun Centered(content: @Composable () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .heightIn(min = maxHeight)
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            content()
         }
     }
 }

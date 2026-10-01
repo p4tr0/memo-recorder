@@ -83,6 +83,18 @@ class RecordingStorage(private val dir: File, private val remuxer: AudioRemuxer)
         partial.delete()
     }
 
+    /** Finished recordings (`.m4a`, or `.aac` kept when remuxing failed). Never includes an in-progress `.part`. */
+    fun finishedFiles(): List<File> =
+        dir.listFiles { f -> f.isFile && (f.name.endsWith(M4A) || f.name.endsWith(AAC)) }.orEmpty().toList()
+
+    /** The finished recording called [fileName]. Names come from [finishedFiles], so never contain a path. */
+    fun fileNamed(fileName: String): File = File(dir, fileName)
+
+    /** When [file]'s recording started, from its name, or null if the name isn't one this class generated. */
+    fun startedAt(file: File): LocalDateTime? = runCatching {
+        LocalDateTime.parse(file.name.take(FILE_NAME_LENGTH), FILE_NAME_FORMAT)
+    }.getOrNull()
+
     /**
      * Finishes recordings interrupted by process death. Call via
      * [RecordingController.recoverInterruptedRecordings], which guarantees no recording is in progress.
@@ -150,6 +162,7 @@ class RecordingStorage(private val dir: File, private val remuxer: AudioRemuxer)
         const val RECOVERING = ".recovering"
         val FINAL_EXTENSIONS = listOf(M4A, AAC, PARTIAL)
         val FILE_NAME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")
+        const val FILE_NAME_LENGTH = "yyyy-MM-dd_HH-mm-ss".length
 
         /** An ADTS header is 7 bytes, or 9 with a CRC. MediaRecorder writes no CRC. */
         const val ADTS_HEADER_BYTES = 7
