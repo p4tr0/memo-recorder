@@ -1,12 +1,15 @@
 package io.github.p4tr0.voicememo.ui.home
 
+import android.net.Uri
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.p4tr0.voicememo.data.FolderTransfers
 import io.github.p4tr0.voicememo.data.Recording
 import io.github.p4tr0.voicememo.data.RecordingRepository
 import io.github.p4tr0.voicememo.data.TagNames
 import io.github.p4tr0.voicememo.data.TagSelection
+import io.github.p4tr0.voicememo.data.TransferResult
 import io.github.p4tr0.voicememo.data.VoiceMemoDatabase
 import io.github.p4tr0.voicememo.playback.Playback
 import io.github.p4tr0.voicememo.playback.PlaybackState
@@ -26,6 +29,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -60,6 +64,7 @@ class HomeViewModelTest {
     private lateinit var controller: RecordingController
     private lateinit var repository: RecordingRepository
     private val tagSelection = FakeTagSelection()
+    private val transfers = FakeTransfers()
     private lateinit var created: HomeViewModel
 
     @Before
@@ -81,6 +86,7 @@ class HomeViewModelTest {
                 controller = controller,
                 repository = repository,
                 tagSelection = tagSelection,
+                transfers = transfers,
                 playbackFactory = { playback },
                 startRecordingService = {
                     controller.start()
@@ -158,6 +164,27 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `export takes the recordings shown, all or only the selected tag's`() = runTest(dispatcher) {
+        val (tagged, untagged) = syncTwoRecordings()
+        val work = repository.createTag("Work")
+        repository.setTag(tagged, work)
+        val vm = viewModel()
+        backgroundScope.launch { vm.library.collect {} }
+        val folder = Uri.parse("content://folders/tree/music")
+
+        vm.awaitLibrary { it.all.single { r -> r.id == tagged.id }.tagId == work.id }
+        vm.exportTo(folder)
+        vm.selectTag(work)
+        vm.awaitLibrary { it.selectedTag == work }
+        vm.exportTo(folder)
+
+        assertEquals(
+            listOf(folder to setOf(tagged.id, untagged.id), folder to setOf(tagged.id)),
+            transfers.exports.map { (uri, recordings) -> uri to recordings().map { it.id }.toSet() }
+        )
+    }
+
+    @Test
     fun `the selected tag is remembered and restored on the next launch`() = runTest(dispatcher) {
         syncTwoRecordings()
         val work = repository.createTag("Work")
@@ -167,7 +194,9 @@ class HomeViewModelTest {
         }
 
         val nextLaunch =
-            HomeViewModel(controller, repository, tagSelection, playbackFactory = { FakePlayback() }) { true }
+            HomeViewModel(controller, repository, tagSelection, transfers, playbackFactory = {
+                FakePlayback()
+            }) { true }
         backgroundScope.launch { nextLaunch.library.collect {} }
         assertEquals(work, nextLaunch.awaitLibrary().selectedTag)
     }
@@ -283,7 +312,10 @@ class HomeViewModelTest {
         backgroundScope.launch { vm.library.collect {} }
 
         assertEquals(null, vm.addTagTo(first, "Work"))
-        val library = vm.awaitLibrary { l -> l.all.single { it.id == first.id }.tagId != null }
+        // Room emits on its own threads, so an early emission may not have the row or the tag yet.
+        val library = vm.awaitLibrary { l ->
+            l.tags.isNotEmpty() && l.all.firstOrNull { it.id == first.id }?.tagId != null
+        }
         val work = library.tags.single()
         assertEquals(work.id, library.all.single { it.id == first.id }.tagId)
         assertEquals(null, library.selectedTag)
@@ -304,6 +336,18 @@ class HomeViewModelTest {
         repository.sync()
         val all = repository.recordings.first()
         return all.last() to all.first()
+    }
+
+    private class FakeTransfers : FolderTransfers {
+        val exports = mutableListOf<Pair<Uri, suspend () -> List<Recording>>>()
+        override val busy = MutableStateFlow(false)
+        override val results = emptyFlow<TransferResult>()
+
+        override fun importFolder(folder: Uri) = Unit
+
+        override fun exportTo(folder: Uri, recordings: suspend () -> List<Recording>) {
+            exports += folder to recordings
+        }
     }
 
     private class FakeTagSelection : TagSelection {

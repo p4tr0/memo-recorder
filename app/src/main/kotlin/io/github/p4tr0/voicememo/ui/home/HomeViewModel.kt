@@ -1,17 +1,19 @@
 package io.github.p4tr0.voicememo.ui.home
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.p4tr0.voicememo.VoiceMemoApp
-import io.github.p4tr0.voicememo.data.ImportSummary
+import io.github.p4tr0.voicememo.data.FolderTransfers
 import io.github.p4tr0.voicememo.data.Recording
 import io.github.p4tr0.voicememo.data.RecordingRepository
 import io.github.p4tr0.voicememo.data.Tag
 import io.github.p4tr0.voicememo.data.TagNames
 import io.github.p4tr0.voicememo.data.TagSelection
+import io.github.p4tr0.voicememo.data.TransferResult
 import io.github.p4tr0.voicememo.playback.MediaControllerPlayback
 import io.github.p4tr0.voicememo.playback.Playback
 import io.github.p4tr0.voicememo.playback.PlaybackState
@@ -27,7 +29,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -54,8 +56,8 @@ class HomeViewModel(
     private val controller: RecordingController,
     private val repository: RecordingRepository,
     private val tagSelection: TagSelection,
-    /** Results of recordings shared into the app from elsewhere. */
-    val importResults: Flow<ImportSummary> = emptyFlow(),
+    /** Imports (from a folder or shared in) and exports. */
+    private val transfers: FolderTransfers,
     playbackFactory: (CoroutineScope) -> Playback,
     private val startRecordingService: () -> Boolean
 ) : ViewModel() {
@@ -66,6 +68,8 @@ class HomeViewModel(
     val events: SharedFlow<RecordingEvent> = controller.events
     val playbackState: StateFlow<PlaybackState> = playback.state
     val playbackPositionMs: StateFlow<Long> = playback.positionMs
+    val transferBusy: StateFlow<Boolean> = transfers.busy
+    val transferResults: Flow<TransferResult> = transfers.results
 
     // Null until the saved choice is read, so the list doesn't flash "All" before switching to the remembered tag.
     private val selectedTagId = MutableStateFlow<Selection?>(null)
@@ -127,6 +131,30 @@ class HomeViewModel(
         playback.stop(recording.id)
         viewModelScope.launch {
             if (!repository.delete(recording)) _deleteFailures.trySend(recording)
+        }
+    }
+
+    /** Copies every audio file in [folder] and its subfolders into the library. */
+    fun importFrom(folder: Uri) = transfers.importFolder(folder)
+
+    /**
+     * Copies the recordings shown (all, or those with the selected tag) to [folder]. Read from the repository by
+     * the transfer, not from [library], which is still loading if the process was killed while the folder picker
+     * was open, and goes away with this ViewModel.
+     */
+    fun exportTo(folder: Uri) {
+        val selection = selectedTagId.value
+        transfers.exportTo(folder) {
+            val tagId = (selection ?: Selection(tagSelection.load())).tagId
+            val all = repository.recordings.first()
+            // Like the list: a tag that no longer exists shows All.
+            if (tagId == null ||
+                repository.tags.first().none { it.id == tagId }
+            ) {
+                all
+            } else {
+                all.filter { it.tagId == tagId }
+            }
         }
     }
 
@@ -212,7 +240,7 @@ class HomeViewModel(
                     controller = app.container.recordingController,
                     repository = app.container.recordingRepository,
                     tagSelection = app.container.tagSelection,
-                    importResults = app.container.importResults,
+                    transfers = app.container.transfers,
                     playbackFactory = { scope -> MediaControllerPlayback(app, scope) },
                     startRecordingService = { RecordingService.start(app) }
                 )

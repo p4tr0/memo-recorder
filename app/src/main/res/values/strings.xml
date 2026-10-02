@@ -108,4 +108,29 @@
         <item quantity="one">%1$d couldn\'t be imported.</item>
         <item quantity="other">%1$d couldn\'t be imported.</item>
     </plurals>
+    <!-- Top bar menu -->
+    <string name="action_library_menu">More options</string>
+    <string name="action_import_folder">Import from folder</string>
+    <string name="action_export_all">Export all recordings</string>
+    <!-- Export when the list is filtered by a tag, e.g. "Export “Work” recordings". -->
+    <string name="action_export_tag">Export \u201c%1$s\u201d recordings</string>
+    <!-- Read by TalkBack for the progress bar while recordings are imported or exported. -->
+    <string name="transfer_in_progress">Copying recordings</string>
+    <string name="message_import_none">No audio files found in that folder.</string>
+    <string name="message_folder_unreadable">Couldn\'t open that folder.</string>
+    <string name="message_share_failed">Couldn\'t read the shared recordings.</string>
+    <string name="message_no_folder_picker">No file picker available to choose a folder.</string>
+    <!-- Shown after an export; joined into one line, e.g. "Exported 3 recordings. 2 were already there." -->
+    <plurals name="message_exported">
+        <item quantity="one">Exported %1$d recording.</item>
+        <item quantity="other">Exported %1$d recordings.</item>
+    </plurals>
+    <plurals name="message_export_already_there">
+        <item quantity="one">%1$d was already there.</item>
+        <item quantity="other">%1$d were already there.</item>
+    </plurals>
+    <plurals name="message_export_failed">
+        <item quantity="one">%1$d couldn\'t be exported.</item>
+        <item quantity="other">%1$d couldn\'t be exported.</item>
+    </plurals>
 </resources>

@@ -1,6 +1,7 @@
 package io.github.p4tr0.voicememo.ui.home
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -10,6 +11,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
@@ -30,8 +32,10 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.p4tr0.voicememo.R
+import io.github.p4tr0.voicememo.data.ExportSummary
 import io.github.p4tr0.voicememo.data.ImportSummary
 import io.github.p4tr0.voicememo.data.Recording
+import io.github.p4tr0.voicememo.data.TransferResult
 import io.github.p4tr0.voicememo.recording.RecordingEvent
 import java.time.ZoneId
 import kotlinx.coroutines.launch
@@ -77,9 +81,30 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
         }
     }
 
+    val transferBusy by viewModel.transferBusy.collectAsStateWithLifecycle()
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { folder ->
+        folder?.let(viewModel::importFrom)
+    }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { folder ->
+        folder?.let(viewModel::exportTo)
+    }
+    val pickFolder = { launcher: ActivityResultLauncher<Uri?> ->
+        try {
+            launcher.launch(null)
+        } catch (e: ActivityNotFoundException) {
+            scope.launch { snackbarHostState.showSnackbar(resources.getString(R.string.message_no_folder_picker)) }
+        }
+    }
+
     LaunchedEffect(viewModel) {
-        viewModel.importResults.collect { summary ->
-            snackbarHostState.showSnackbar(importMessage(resources, summary))
+        viewModel.transferResults.collect { result ->
+            val message = when (result) {
+                is TransferResult.Imported -> importMessage(resources, result.summary)
+                is TransferResult.Exported -> exportMessage(resources, result.summary)
+                TransferResult.FolderUnreadable -> resources.getString(R.string.message_folder_unreadable)
+                TransferResult.ShareFailed -> resources.getString(R.string.message_share_failed)
+            }
+            snackbarHostState.showSnackbar(message)
         }
     }
 
@@ -125,6 +150,9 @@ fun HomeRoute(viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Facto
         onAddTagTo = viewModel::addTagTo,
         onRenameTag = viewModel::renameTag,
         onDeleteTag = viewModel::deleteTag,
+        onImportClick = { pickFolder(importLauncher) },
+        onExportClick = { pickFolder(exportLauncher) },
+        transferBusy = transferBusy,
         playback = playback,
         playbackPositionMs = { playbackPosition.value },
         onPlayClick = viewModel::togglePlayback,
@@ -159,6 +187,8 @@ private fun recordingPermissions(): Array<String> = buildList {
 
 /** "Imported 3 recordings", plus what was skipped or failed, if anything. */
 private fun importMessage(resources: Resources, summary: ImportSummary): String = buildList {
+    // Only a folder import can find nothing: a share always hands over at least one file.
+    if (summary == ImportSummary(0, 0, 0)) return resources.getString(R.string.message_import_none)
     if (summary.imported > 0 || (summary.duplicates == 0 && summary.failed == 0)) {
         add(resources.getQuantityString(R.plurals.message_imported, summary.imported, summary.imported))
     }
@@ -167,6 +197,25 @@ private fun importMessage(resources: Resources, summary: ImportSummary): String 
     }
     if (summary.failed > 0) {
         add(resources.getQuantityString(R.plurals.message_import_failed, summary.failed, summary.failed))
+    }
+}.joinToString(" ")
+
+/** "Exported 3 recordings", plus what was already there or failed, if anything. */
+private fun exportMessage(resources: Resources, summary: ExportSummary): String = buildList {
+    if (summary.exported > 0 || (summary.alreadyThere == 0 && summary.failed == 0)) {
+        add(resources.getQuantityString(R.plurals.message_exported, summary.exported, summary.exported))
+    }
+    if (summary.alreadyThere > 0) {
+        add(
+            resources.getQuantityString(
+                R.plurals.message_export_already_there,
+                summary.alreadyThere,
+                summary.alreadyThere
+            )
+        )
+    }
+    if (summary.failed > 0) {
+        add(resources.getQuantityString(R.plurals.message_export_failed, summary.failed, summary.failed))
     }
 }.joinToString(" ")
 
