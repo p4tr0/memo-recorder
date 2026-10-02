@@ -22,11 +22,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,9 +37,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Scaffold
@@ -49,6 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -117,6 +124,12 @@ fun HomeScreen(
     /** Returns the error to show in the rename dialog, or null once the rename is submitted. */
     onRenameTag: (Tag, String) -> TagNames.Result? = { _, _ -> null },
     onDeleteTag: (Tag) -> Unit = {},
+    /** Opens the folder picker to import from. */
+    onImportClick: () -> Unit = {},
+    /** Opens the folder picker to export [recordings] (what's shown) to. */
+    onExportClick: () -> Unit = {},
+    /** An import or export is running: shows progress and holds off starting another. */
+    transferBusy: Boolean = false,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     clock: () -> Long = SystemClock::elapsedRealtime,
     zone: ZoneId = ZoneId.systemDefault()
@@ -128,7 +141,33 @@ fun HomeScreen(
         modifier = modifier,
         topBar = {
             val title = @Composable { Text(stringResource(R.string.home_title)) }
-            if (compactHeight) TopAppBar(title = title) else LargeTopAppBar(title = title)
+            val actions: @Composable RowScope.() -> Unit = {
+                LibraryMenu(
+                    selectedTag = selectedTag,
+                    canExport = !recordings.isNullOrEmpty(),
+                    busy = transferBusy,
+                    onImportClick = onImportClick,
+                    onExportClick = onExportClick
+                )
+            }
+            Column {
+                if (compactHeight) {
+                    TopAppBar(title = title, actions = actions)
+                } else {
+                    LargeTopAppBar(title = title, actions = actions)
+                }
+                // Fixed height whether shown or not, so the content doesn't jump when a transfer starts or ends.
+                Box(Modifier.fillMaxWidth().height(PROGRESS_HEIGHT)) {
+                    if (transferBusy) {
+                        val label = stringResource(R.string.transfer_in_progress)
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .semantics { contentDescription = label }
+                        )
+                    }
+                }
+            }
         }
     ) { padding ->
         val content = when {
@@ -247,6 +286,52 @@ fun HomeScreen(
 }
 
 private enum class Content { Loading, Empty, Library, Recording }
+
+/** Import and export, from the top bar. Export takes what the list shows: everything, or the selected tag. */
+@Composable
+private fun LibraryMenu(
+    selectedTag: Tag?,
+    canExport: Boolean,
+    busy: Boolean,
+    onImportClick: () -> Unit,
+    onExportClick: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                painter = painterResource(R.drawable.ic_more_vert),
+                contentDescription = stringResource(R.string.action_library_menu)
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.action_import_folder)) },
+                enabled = !busy,
+                onClick = {
+                    expanded = false
+                    onImportClick()
+                }
+            )
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        if (selectedTag == null) {
+                            stringResource(R.string.action_export_all)
+                        } else {
+                            stringResource(R.string.action_export_tag, selectedTag.name)
+                        }
+                    )
+                },
+                enabled = !busy && canExport,
+                onClick = {
+                    expanded = false
+                    onExportClick()
+                }
+            )
+        }
+    }
+}
 
 /** Scrolls only when the content can't fit (landscape, 2x font); otherwise stays centered. */
 @Composable
@@ -498,6 +583,7 @@ private val RECORD_BUTTON_SIZE = 88.dp
 private val SIDE_BUTTON_SIZE = 56.dp
 private val COMPACT_HEIGHT = 480.dp
 private val HALO_CLEARANCE = 24.dp
+private val PROGRESS_HEIGHT = 4.dp
 
 // Tighter than the 32dp row gap to fit short windows; still clears the halo's 0.4 x 44dp reach.
 private val VERTICAL_CONTROLS_GAP = 24.dp

@@ -183,6 +183,27 @@ class HomeScreenScreenshotTest {
     fun libraryMenuDark() = capture("home_library_menu_dark", darkTheme = true, IDLE, LIBRARY, open = MENU)
 
     @Test
+    fun libraryTopMenuLight() = capture("home_top_menu_light", darkTheme = false, IDLE, LIBRARY, open = TOP_MENU)
+
+    @Test
+    fun libraryTopMenuDark() = capture("home_top_menu_dark", darkTheme = true, IDLE, LIBRARY, open = TOP_MENU)
+
+    // Export is unavailable with nothing to export; import still works.
+    @Test
+    fun emptyTopMenuLight() = capture("home_top_menu_empty_light", darkTheme = false, IDLE, open = TOP_MENU)
+
+    @Test
+    fun emptyTopMenuDark() = capture("home_top_menu_empty_dark", darkTheme = true, IDLE, open = TOP_MENU)
+
+    // Export names the tag the list is filtered by.
+    @Test
+    fun tagsTopMenuLight() =
+        captureTags("home_top_menu_tag_light", darkTheme = false, selectedTag = WORK, open = TOP_MENU)
+
+    @Test
+    fun tagsTopMenuDark() = captureTags("home_top_menu_tag_dark", darkTheme = true, selectedTag = WORK, open = TOP_MENU)
+
+    @Test
     fun renameDialogLight() =
         capture("home_rename_dialog_light", darkTheme = false, IDLE, LIBRARY, open = MENU + "Rename")
 
@@ -594,6 +615,9 @@ class HomeScreenScreenshotTest {
             durationMs = 195_000
         )
         const val PLAYING_POSITION_MS = 42_000L
+
+        // The top bar's menu: import and export.
+        val TOP_MENU = listOf("More options")
 
         // The overflow button of the renamed "Grocery list" row.
         val MENU = listOf("More options for Grocery list")
