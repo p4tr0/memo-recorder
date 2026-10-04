@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -130,6 +131,11 @@ fun HomeScreen(
     onExportClick: () -> Unit = {},
     /** An import or export is running: shows progress and holds off starting another. */
     transferBusy: Boolean = false,
+    /** What's typed into the search bar, or null while it's closed. [recordings] is already filtered by it. */
+    search: String? = null,
+    onSearchOpen: () -> Unit = {},
+    onSearchChange: (String) -> Unit = {},
+    onSearchClose: () -> Unit = {},
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     clock: () -> Long = SystemClock::elapsedRealtime,
     zone: ZoneId = ZoneId.systemDefault()
@@ -142,6 +148,15 @@ fun HomeScreen(
         topBar = {
             val title = @Composable { Text(stringResource(R.string.home_title)) }
             val actions: @Composable RowScope.() -> Unit = {
+                // Nothing to search while recording (the list is hidden) or before the first recording.
+                if (active == null && !allRecordings.isNullOrEmpty()) {
+                    IconButton(onClick = onSearchOpen) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_search),
+                            contentDescription = stringResource(R.string.action_search)
+                        )
+                    }
+                }
                 LibraryMenu(
                     selectedTag = selectedTag,
                     canExport = !recordings.isNullOrEmpty(),
@@ -151,7 +166,9 @@ fun HomeScreen(
                 )
             }
             Column {
-                if (compactHeight) {
+                if (search != null && active == null) {
+                    SearchTopBar(query = search, onQueryChange = onSearchChange, onClose = onSearchClose)
+                } else if (compactHeight) {
                     TopAppBar(title = title, actions = actions)
                 } else {
                     LargeTopAppBar(title = title, actions = actions)
@@ -203,7 +220,9 @@ fun HomeScreen(
                             modifier = Modifier.padding(vertical = 4.dp)
                         )
                         val shown = recordings.orEmpty()
-                        if (shown.isEmpty() && selectedTag != null) {
+                        if (shown.isEmpty() && !search.isNullOrBlank()) {
+                            Centered { NoSearchResults(search, selectedTag, onSearchAll = { onTagSelected(null) }) }
+                        } else if (shown.isEmpty() && selectedTag != null) {
                             Centered { NoRecordingsTagged(selectedTag) }
                         } else {
                             RecordingList(
@@ -250,6 +269,8 @@ fun HomeScreen(
             .fillMaxSize()
             .padding(padding)
             .consumeWindowInsets(padding)
+            // Keeps the last results, the snackbar and the controls above the keyboard while searching.
+            .imePadding()
         if (compactHeight) {
             // Landscape phones and split screen: controls in a column on the end side, so the list keeps the
             // height. HALO_CLEARANCE on both sides keeps the amplitude halo (up to 0.4 x radius) off the content

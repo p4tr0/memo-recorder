@@ -1,8 +1,10 @@
 package io.github.p4tr0.voicememo.ui.home
 
 import android.net.Uri
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -21,7 +23,10 @@ import io.github.p4tr0.voicememo.recording.RecordingController
 import io.github.p4tr0.voicememo.recording.RecordingEvent
 import io.github.p4tr0.voicememo.recording.RecordingService
 import io.github.p4tr0.voicememo.recording.RecordingState
+import java.time.ZoneId
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,20 +35,23 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** The library as the Home screen shows it: [recordings] is already filtered by [selectedTag]. */
+/** The library as the Home screen shows it: [recordings] is already filtered by [selectedTag] and [search]. */
 data class Library(
     val tags: List<Tag>,
     /** Null means All. */
     val selectedTag: Tag?,
     val recordings: List<Recording>,
     /** Every recording, whatever the filter. */
-    val all: List<Recording>
+    val all: List<Recording>,
+    /** What's typed into the search bar, or null while it's closed. */
+    val search: String? = null
 ) {
     /** True when there are no recordings at all, whatever the filter. */
     val isEmpty: Boolean get() = all.isEmpty()
@@ -59,6 +67,12 @@ class HomeViewModel(
     /** Imports (from a folder or shared in) and exports. */
     private val transfers: FolderTransfers,
     playbackFactory: (CoroutineScope) -> Playback,
+    /** Keeps the search across process death, like the screen's other saved state. */
+    private val savedState: SavedStateHandle,
+    /** Filters off the main thread: matching formats every recording's date. */
+    private val filterDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    /** Read on each search, so a time zone change shows up without a restart. */
+    private val zone: () -> ZoneId = ZoneId::systemDefault,
     private val startRecordingService: () -> Boolean
 ) : ViewModel() {
     private val playback = playbackFactory(viewModelScope)
@@ -76,18 +90,25 @@ class HomeViewModel(
     private val saveMutex = Mutex()
 
     /** Null while loading. */
+    private val search: StateFlow<String?> = savedState.getStateFlow(SEARCH_KEY, null)
+
     val library: StateFlow<Library?> =
-        combine(repository.recordings, repository.tags, selectedTagId) { all, tags, selection ->
+        combine(repository.recordings, repository.tags, selectedTagId, search) { all, tags, selection, search ->
             selection ?: return@combine null
             // A remembered tag that no longer exists falls back to All.
             val selected = tags.firstOrNull { it.id == selection.tagId }
+            val matcher = search?.let { SearchMatcher(it, zone()) }
             Library(
                 tags = tags,
                 selectedTag = selected,
-                recordings = if (selected == null) all else all.filter { it.tagId == selected.id },
-                all = all
+                recordings = all.filter { recording ->
+                    (selected == null || recording.tagId == selected.id) &&
+                        (matcher == null || matcher.matches(recording))
+                },
+                all = all,
+                search = search
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
+        }.flowOn(filterDispatcher).stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
 
     init {
         viewModelScope.launch {
@@ -103,8 +124,25 @@ class HomeViewModel(
     /** Recordings whose file couldn't be deleted. They stay in the list. */
     val deleteFailures: Flow<Recording> = _deleteFailures.receiveAsFlow()
 
+    /** Opens the search bar, empty. */
+    fun openSearch() {
+        savedState[SEARCH_KEY] = ""
+    }
+
+    /** Ignored while the search bar is closed. */
+    fun setSearch(query: String) {
+        if (search.value != null) savedState[SEARCH_KEY] = query
+    }
+
+    /** Closes the search bar and shows the whole list again. */
+    fun closeSearch() {
+        savedState[SEARCH_KEY] = null
+    }
+
     /** Requires RECORD_AUDIO to be granted already. */
     fun startRecording() {
+        // The list it filters is hidden while recording, and all of it is shown again afterwards.
+        closeSearch()
         // Otherwise the speaker would be recorded too.
         playback.pause()
         if (!startRecordingService()) controller.reportStartFailure()
@@ -232,6 +270,7 @@ class HomeViewModel(
 
     companion object {
         private const val STOP_TIMEOUT_MS = 5_000L
+        private const val SEARCH_KEY = "search"
 
         val Factory = viewModelFactory {
             initializer {
@@ -241,6 +280,7 @@ class HomeViewModel(
                     repository = app.container.recordingRepository,
                     tagSelection = app.container.tagSelection,
                     transfers = app.container.transfers,
+                    savedState = createSavedStateHandle(),
                     playbackFactory = { scope -> MediaControllerPlayback(app, scope) },
                     startRecordingService = { RecordingService.start(app) }
                 )
