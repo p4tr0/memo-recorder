@@ -9,6 +9,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -77,6 +78,8 @@ import io.github.p4tr0.voicememo.data.Recording
 import io.github.p4tr0.voicememo.data.Tag
 import io.github.p4tr0.voicememo.data.TagNames
 import io.github.p4tr0.voicememo.playback.PlaybackState
+import io.github.p4tr0.voicememo.ui.theme.listPanel
+import io.github.p4tr0.voicememo.ui.theme.listRowHighlight
 import io.github.p4tr0.voicememo.ui.theme.tagColor
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -113,25 +116,31 @@ internal fun RecordingList(
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "edgeFade"
     )
-    val edgeColor = MaterialTheme.colorScheme.background
+    val panel = MaterialTheme.colorScheme.listPanel
+    val edgeColor = panel
     LazyColumn(
         state = listState,
-        modifier = modifier.drawWithContent {
-            drawContent()
-            val height = EDGE_FADE.toPx().coerceAtMost(size.height)
-            if (edge > 0f) {
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        listOf(edgeColor.copy(alpha = 0f), edgeColor),
-                        startY = size.height - height,
-                        endY = size.height
-                    ),
-                    topLeft = Offset(0f, size.height - height),
-                    size = Size(size.width, height),
-                    alpha = edge
-                )
-            }
-        },
+        // On its own brighter panel, so the list reads as an area that scrolls rather than part of the page.
+        modifier = modifier
+            .padding(horizontal = PANEL_MARGIN)
+            .clip(RoundedCornerShape(PANEL_CORNER))
+            .background(panel)
+            .drawWithContent {
+                drawContent()
+                val height = EDGE_FADE.toPx().coerceAtMost(size.height)
+                if (edge > 0f) {
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            listOf(edgeColor.copy(alpha = 0f), edgeColor),
+                            startY = size.height - height,
+                            endY = size.height
+                        ),
+                        topLeft = Offset(0f, size.height - height),
+                        size = Size(size.width, height),
+                        alpha = edge
+                    )
+                }
+            },
         // The bottom padding lets the last row scroll fully clear of the fade.
         contentPadding = PaddingValues(top = 8.dp, bottom = EDGE_FADE),
         // Keeps the tinted current row from touching its neighbors.
@@ -227,7 +236,7 @@ private fun RecordingRow(
     val playLabel =
         stringResource(if (playing) R.string.action_pause_playback else R.string.action_play, spokenName)
     // The current row sits on a subtle tint, so it reads as one unit with its seek bar.
-    val tint = MaterialTheme.colorScheme.surfaceContainer
+    val tint = MaterialTheme.colorScheme.listRowHighlight
     val container by animateColorAsState(
         targetValue = if (current) tint else tint.copy(alpha = 0f),
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
@@ -508,4 +517,8 @@ private val TAG_STRIPE_WIDTH = 3.dp
 private val TAG_STRIPE_INSET = 12.dp
 private val TAG_SHAPE = RoundedCornerShape(6.dp)
 private val EDGE_FADE = 24.dp
+
+// Narrow enough to keep the rows wide; the corner sits just outside ROW_SHAPE's, so a highlighted row nests in it.
+private val PANEL_MARGIN = 8.dp
+private val PANEL_CORNER = 24.dp
 private const val LARGE_FONT_SCALE = 1.5f
