@@ -634,7 +634,9 @@ class HomeScreenScreenshotTest {
                 title = title,
                 createdAt = Instant.parse(createdAt),
                 durationMs = durationMs,
-                sizeBytes = durationMs * 8
+                sizeBytes = durationMs * 8,
+                // Fixtures only use .aac as the raw copy next to an .m4a, as the repository would mark it.
+                isUnprocessedCopy = extension == "aac"
             )
 
         val LIBRARY = listOf(

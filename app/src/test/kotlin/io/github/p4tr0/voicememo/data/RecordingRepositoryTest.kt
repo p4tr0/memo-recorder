@@ -179,7 +179,30 @@ class RecordingRepositoryTest {
         repository.sync()
         val recordings = repository.recordings.first()
         assertEquals(2, recordings.size)
-        assertEquals(listOf(false, true), recordings.sortedBy { it.id.endsWith(".aac") }.map { it.isRawAac })
+        assertEquals(
+            listOf(false, true),
+            recordings.sortedBy { it.id.endsWith(".aac") }.map { it.isUnprocessedCopy }
+        )
+    }
+
+    @Test
+    fun `an aac with no m4a partner, like an import, is not an unprocessed copy`() = runTest {
+        file("2026-10-01_09-05-00.aac")
+        file("2026-10-02_09-05-00.m4a")
+        repository.sync()
+        assertEquals(listOf(false, false), repository.recordings.first().map { it.isUnprocessedCopy })
+    }
+
+    @Test
+    fun `once its m4a partner is deleted, the raw aac is the only copy and no longer marked`() = runTest {
+        file("2026-10-01_09-05-00.m4a")
+        file("2026-10-01_09-05-00.aac")
+        repository.sync()
+        val m4a = repository.recordings.first().single { it.id.endsWith(".m4a") }
+
+        repository.delete(m4a)
+
+        assertEquals(false, repository.recordings.first().single().isUnprocessedCopy)
     }
 
     @Test
