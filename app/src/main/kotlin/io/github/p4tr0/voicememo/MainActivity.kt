@@ -40,7 +40,7 @@ class MainActivity : ComponentActivity() {
         val uris = sharedUris(intent)
         // Reads start right away, while the sender's read grant (held by this app) is fresh.
         val resolver = applicationContext.contentResolver
-        (application as VoiceMemoApp).container.importShared { uris.map { describe(resolver, it) } }
+        (application as VoiceMemoApp).container.transfers.importShared { uris.map { describe(resolver, it) } }
         // Handled: a later recreation (e.g. from recents) must not import the same files again.
         setIntent(Intent(this, MainActivity::class.java))
     }
