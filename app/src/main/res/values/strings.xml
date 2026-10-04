@@ -133,4 +133,13 @@
         <item quantity="one">%1$d couldn\'t be exported.</item>
         <item quantity="other">%1$d couldn\'t be exported.</item>
     </plurals>
+    <!-- Search -->
+    <string name="action_search">Search</string>
+    <string name="search_hint">Search recordings</string>
+    <string name="action_close_search">Close search</string>
+    <string name="action_clear_search">Clear search</string>
+    <string name="search_empty_title">No recordings match \u201c%1$s\u201d</string>
+    <!-- Below the no-match message when the list is filtered by a tag, e.g. "Only “Work” recordings were searched." -->
+    <string name="search_empty_in_tag">Only \u201c%1$s\u201d recordings were searched.</string>
+    <string name="action_search_all">Search all</string>
 </resources>

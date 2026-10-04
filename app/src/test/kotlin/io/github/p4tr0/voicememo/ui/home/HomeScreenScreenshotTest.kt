@@ -39,6 +39,7 @@ import io.github.p4tr0.voicememo.ui.theme.VoiceMemoTheme
 import java.io.File
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.Locale
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -202,6 +203,38 @@ class HomeScreenScreenshotTest {
 
     @Test
     fun tagsTopMenuDark() = captureTags("home_top_menu_tag_dark", darkTheme = true, selectedTag = WORK, open = TOP_MENU)
+
+    @Test
+    fun searchLight() = captureTags("home_search_light", darkTheme = false, search = "sep 2")
+
+    @Test
+    fun searchDark() = captureTags("home_search_dark", darkTheme = true, search = "sep 2")
+
+    // Just opened: an empty field shows everything.
+    @Test
+    fun searchEmptyLight() = captureTags("home_search_empty_light", darkTheme = false, search = "")
+
+    @Test
+    fun searchEmptyDark() = captureTags("home_search_empty_dark", darkTheme = true, search = "")
+
+    // Under All there's nothing wider to search, so no "Search all".
+    @Test
+    fun searchNoResultsLight() = captureTags("home_search_no_results_light", darkTheme = false, search = "dentist")
+
+    @Test
+    fun searchNoResultsDark() = captureTags("home_search_no_results_dark", darkTheme = true, search = "dentist")
+
+    @Test
+    fun searchNoResultsInTagLight() =
+        captureTags("home_search_no_results_tag_light", darkTheme = false, selectedTag = WORK, search = "grocery")
+
+    @Test
+    fun searchNoResultsInTagDark() =
+        captureTags("home_search_no_results_tag_dark", darkTheme = true, selectedTag = WORK, search = "grocery")
+
+    @Test
+    @Config(qualifiers = "+land")
+    fun searchLandscapeDark() = captureTags("home_search_landscape_dark", darkTheme = true, search = "song")
 
     @Test
     fun renameDialogLight() =
@@ -405,12 +438,16 @@ class HomeScreenScreenshotTest {
         open: List<String> = emptyList(),
         type: String? = null,
         thenClick: String? = null,
-        longPress: Boolean = false
+        longPress: Boolean = false,
+        search: String? = null
     ) = capture(
         name,
         darkTheme,
         IDLE,
-        recordings = TAGGED_LIBRARY.filter { selectedTag == null || it.tagId == selectedTag.id },
+        recordings = TAGGED_LIBRARY.filter {
+            (selectedTag == null || it.tagId == selectedTag.id) &&
+                (search == null || matchesSearch(it, search, ZoneOffset.UTC, Locale.US))
+        },
         playback = playback,
         fontScale = fontScale,
         open = open,
@@ -419,7 +456,8 @@ class HomeScreenScreenshotTest {
         selectedTag = selectedTag,
         type = type,
         thenClick = thenClick,
-        longPress = longPress
+        longPress = longPress,
+        search = search
     )
 
     /**
@@ -445,7 +483,9 @@ class HomeScreenScreenshotTest {
         /** Clicked by text after [type]. */
         thenClick: String? = null,
         /** The first of [open] is long-pressed by its text instead of clicked. */
-        longPress: Boolean = false
+        longPress: Boolean = false,
+        /** The search bar's text, or null for closed. Open, its field is focused, so frames are stepped by hand. */
+        search: String? = null
     ) {
         composeRule.setContent {
             val density = LocalDensity.current
@@ -474,6 +514,7 @@ class HomeScreenScreenshotTest {
                         onAddTag = ::rejectInvalid,
                         onAddTagTo = { _, tag -> rejectInvalid(tag) },
                         onRenameTag = { tag, input -> rejectRename(tags, tag, input) },
+                        search = search,
                         snackbarHostState = snackbarHostState,
                         clock = { 83_000 },
                         zone = ZoneOffset.UTC
@@ -482,12 +523,14 @@ class HomeScreenScreenshotTest {
             }
         }
         val path = "src/test/screenshots/$name.png"
-        if (open.isEmpty()) {
+        if (open.isEmpty() && search == null) {
             composeRule.onRoot().captureRoboImage(path)
             return
         }
-        val first = composeRule.onAllNodes(contentDescriptionIgnoringNarrowSpaces(open.first()))
-        if (longPress) {
+        val first = composeRule.onAllNodes(contentDescriptionIgnoringNarrowSpaces(open.firstOrNull().orEmpty()))
+        if (open.isEmpty()) {
+            Unit
+        } else if (longPress) {
             composeRule.onNodeWithText(open.first()).performSemanticsAction(SemanticsActions.OnLongClick)
             composeRule.waitForIdle()
         } else if (first.fetchSemanticsNodes().isNotEmpty()) {

@@ -1,6 +1,7 @@
 package io.github.p4tr0.voicememo.ui.home
 
 import android.net.Uri
+import androidx.lifecycle.SavedStateHandle
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -87,6 +88,8 @@ class HomeViewModelTest {
                 repository = repository,
                 tagSelection = tagSelection,
                 transfers = transfers,
+                savedState = SavedStateHandle(),
+                filterDispatcher = dispatcher,
                 playbackFactory = { playback },
                 startRecordingService = {
                     controller.start()
@@ -164,6 +167,67 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `search filters by title within the selected tag, and closing it shows everything again`() =
+        runTest(dispatcher) {
+            val (first, second) = syncTwoRecordings()
+            repository.rename(first, "Grocery list")
+            repository.rename(second, "Grocery run")
+            val work = repository.createTag("Work")
+            repository.setTag(first, work)
+            val vm = viewModel()
+            backgroundScope.launch { vm.library.collect {} }
+            vm.awaitLibrary { it.all.count { r -> r.title != null } == 2 && it.all.any { r -> r.tagId == work.id } }
+
+            vm.setSearch("grocery")
+            assertEquals("ignored while closed", 2, vm.awaitLibrary { it.search == null }.recordings.size)
+            vm.openSearch()
+            vm.setSearch("GROCERY")
+            assertEquals(2, vm.awaitLibrary { it.search == "GROCERY" }.recordings.size)
+            vm.setSearch("list")
+            assertEquals(listOf(first.id), vm.awaitLibrary { it.search == "list" }.recordings.map { it.id })
+            vm.selectTag(work)
+            vm.setSearch("run")
+            assertTrue(vm.awaitLibrary { it.search == "run" && it.selectedTag == work }.recordings.isEmpty())
+            vm.closeSearch()
+            assertEquals(listOf(first.id), vm.awaitLibrary { it.search == null }.recordings.map { it.id })
+        }
+
+    @Test
+    fun `an open search comes back after process death`() = runTest(dispatcher) {
+        val (first, _) = syncTwoRecordings()
+        repository.rename(first, "Grocery list")
+        val restored = HomeViewModel(
+            controller,
+            repository,
+            tagSelection,
+            transfers,
+            savedState = SavedStateHandle(mapOf("search" to "grocery")),
+            filterDispatcher = dispatcher,
+            playbackFactory = { FakePlayback() }
+        ) { true }
+        backgroundScope.launch { restored.library.collect {} }
+
+        val library = restored.awaitLibrary { it.search == "grocery" && it.recordings.size == 1 }
+        assertEquals(listOf(first.id), library.recordings.map { it.id })
+    }
+
+    @Test
+    fun `starting a recording closes the search`() = runTest(dispatcher) {
+        syncTwoRecordings()
+        val vm = viewModel()
+        backgroundScope.launch { vm.library.collect {} }
+        vm.openSearch()
+        vm.setSearch("anything")
+        vm.awaitLibrary { it.search == "anything" }
+
+        vm.startRecording()
+
+        assertEquals(null, vm.awaitLibrary { it.search == null }.search)
+        // Otherwise the level meter keeps ticking and runTest never goes idle.
+        vm.stop()
+    }
+
+    @Test
     fun `export takes the recordings shown, all or only the selected tag's`() = runTest(dispatcher) {
         val (tagged, untagged) = syncTwoRecordings()
         val work = repository.createTag("Work")
@@ -194,9 +258,14 @@ class HomeViewModelTest {
         }
 
         val nextLaunch =
-            HomeViewModel(controller, repository, tagSelection, transfers, playbackFactory = {
-                FakePlayback()
-            }) { true }
+            HomeViewModel(
+                controller,
+                repository,
+                tagSelection,
+                transfers,
+                savedState = SavedStateHandle(),
+                playbackFactory = { FakePlayback() }
+            ) { true }
         backgroundScope.launch { nextLaunch.library.collect {} }
         assertEquals(work, nextLaunch.awaitLibrary().selectedTag)
     }
