@@ -25,15 +25,15 @@ data class Recording(
     val durationMs: Long,
     val sizeBytes: Long,
     /** The recording's one tag, or null. */
-    val tagId: Long? = null
+    val tagId: Long? = null,
+    /**
+     * The raw `.aac` kept next to an `.m4a` of the same recording because remuxing dropped audio. It is the
+     * complete copy, so the UI must tell the two apart. Not every `.aac` is one: imported files have no `.m4a`
+     * partner, and neither does a raw stream kept when remuxing failed outright, which is then the only copy.
+     */
+    val isUnprocessedCopy: Boolean = false
 ) {
     val id: String get() = file.name
-
-    /**
-     * The raw stream kept when remuxing failed or dropped audio. It may sit next to an `.m4a` of the same
-     * recording, and is then the complete copy, so the UI must make the two distinguishable.
-     */
-    val isRawAac: Boolean get() = file.extension == "aac"
 }
 
 /** [hue] is 0 until 359; the UI picks lightness and saturation per theme. */
@@ -59,7 +59,14 @@ class RecordingRepository(
     val recordings: Flow<List<Recording>> =
         combine(dao.observeAll(), dao.observeRecordingTags()) { rows, links ->
             val tagByFile = links.associate { it.fileName to it.tagId }
-            rows.map { it.toRecording(tagByFile[it.fileName]) }
+            // Imports never share a base name with another file, so only a kept raw stream has an .m4a partner.
+            val processed = rows.mapNotNullTo(HashSet()) { it.fileName.removeSuffixOrNull(M4A) }
+            rows.map { row ->
+                row.toRecording(
+                    tagId = tagByFile[row.fileName],
+                    isUnprocessedCopy = row.fileName.removeSuffixOrNull(AAC) in processed
+                )
+            }
         }
 
     val tags: Flow<List<Tag>> = dao.observeTags().map { rows -> rows.map { it.toTag() } }
@@ -167,16 +174,21 @@ class RecordingRepository(
 
     private fun TagEntity.toTag() = Tag(id, name, hue)
 
-    private fun RecordingEntity.toRecording(tagId: Long?) = Recording(
+    private fun RecordingEntity.toRecording(tagId: Long?, isUnprocessedCopy: Boolean) = Recording(
         file = storage.fileNamed(fileName),
         title = title,
         createdAt = Instant.ofEpochMilli(createdAt),
         durationMs = durationMs,
         sizeBytes = sizeBytes,
-        tagId = tagId
+        tagId = tagId,
+        isUnprocessedCopy = isUnprocessedCopy
     )
 
     private companion object {
         const val TAG = "RecordingRepository"
+        const val M4A = ".m4a"
+        const val AAC = ".aac"
+
+        fun String.removeSuffixOrNull(suffix: String): String? = if (endsWith(suffix)) removeSuffix(suffix) else null
     }
 }

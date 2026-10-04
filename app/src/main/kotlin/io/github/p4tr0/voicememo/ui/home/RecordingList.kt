@@ -183,7 +183,7 @@ internal fun RecordingList(
     recordings.firstOrNull { it.id == deleting }?.let { recording ->
         DeleteDialog(
             title = displayTitle(recording, zone),
-            unprocessed = recording.isRawAac,
+            unprocessed = recording.isUnprocessedCopy,
             onDismiss = { deleting = null },
             onConfirm = {
                 onDelete(recording)
@@ -216,7 +216,14 @@ private fun RecordingRow(
     val current = playback != null
     val tagLabel = tagName?.let { stringResource(R.string.tag_state, it) }
     // A raw copy can share its date (and so its default title) with a processed one; its buttons must say which.
-    val spokenName = if (recording.isRawAac) stringResource(R.string.recording_name_unprocessed, title) else title
+    val spokenName = if (recording.isUnprocessedCopy) {
+        stringResource(
+            R.string.recording_name_unprocessed,
+            title
+        )
+    } else {
+        title
+    }
     val playLabel =
         stringResource(if (playing) R.string.action_pause_playback else R.string.action_play, spokenName)
     // The current row sits on a subtle tint, so it reads as one unit with its seek bar.
@@ -294,7 +301,7 @@ private fun RecordingRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         // Leading, so ellipsizing never hides it.
-                        if (recording.isRawAac) UnprocessedTag()
+                        if (recording.isUnprocessedCopy) UnprocessedTag()
                         Text(
                             text = subtitle,
                             style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
