@@ -68,3 +68,9 @@ app/src/main/kotlin/io/github/p4tr0/voicememo/
 app/src/test/        unit and screenshot tests (goldens in app/src/test/screenshots/)
 app/src/androidTest/ instrumented tests on the real media framework
 ```
+
+## License
+
+Copyright 2026 Patryk Urbanczyk
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
